@@ -1,21 +1,424 @@
 from nicegui import ui, app
 
-@ui.page('/mainscreen')
-
+# =========================
+# HEADER COMÚN
+# =========================
 def create_main_screen():
-    """Pantalla principal mostrada tras hacer login."""
-
     def logout():
         app.storage.user.clear()
         ui.navigate.to('/login')
 
-    with ui.column().classes('absolute-center items-center'):
-        ui.label(f'Bienvenido, {app.storage.user["username"]}!').classes('text-2xl mb-4')
-        ui.button('Cerrar sesión', on_click=logout, color='negative').props('outline round')
-        ui.button('Ir a Subpágina', on_click=lambda: ui.navigate.to('/subpage')).props('flat color=primary')
+    with ui.header().classes('p-2 items-center justify-between'):
+        ui.label('Tuprofemaria').classes('text-white text-xl font-bold')
+        with ui.row().classes('gap-4'):
+            ui.button('Menu Creator', on_click=lambda: ui.navigate.to('/mainscreen')).props('flat color=white')
+            ui.button('My Classes', on_click=lambda: ui.navigate.to('/myclasses')).props('flat color=white')
+            ui.button('Profile', on_click=lambda: ui.navigate.to('/profile')).props('flat color=white')
+            ui.button('Log out', on_click=logout).props('flat color=black')
 
-@ui.page('/subpage')
-def sub_page():
-    with ui.column().classes('absolute-center items-center'):
-        ui.label('Esta es una subpágina protegida.')
-        ui.button('Volver', on_click=lambda: ui.navigate.to('/mainscreen'))
+
+# =========================
+# PÁGINAS
+# =========================
+@ui.page('/mainscreen')
+def mainscreen():
+    create_main_screen()
+    with ui.column().classes('absolute-center items-center gap-4'):
+        ui.label(f'Bienvenido, {app.storage.user.get("username", "Usuario")}!').classes('text-2xl')
+        with ui.row().classes('gap-2'):
+            ui.button('Old Student', on_click=lambda: ui.navigate.to('/oldStudent')).props('flat color=primary')
+            ui.button('New Student', on_click=lambda: ui.navigate.to('/newStudent')).props('flat color=primary')
+
+
+# =========================
+# Lógica de paquetes y clases (global)
+# =========================
+days_of_week = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
+duration_options = ['30 minutos', '1 hora']
+pack_of_classes = ["Plan1", "Plan2", "Plan3"]
+
+max_days_per_plan = {"Plan1": 1, "Plan2": 2, "Plan3": 3}
+max_classes_per_plan = {"Plan1": 1, "Plan2": 1, "Plan3": 3}
+
+hours_of_day = [f'{h:02d}:00' for h in range(24)]
+group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
+
+# Función global para agregar hora
+def add_hour_global(time_input_value, selected_days, duration, table, package_selector=None, classes_added=None):
+    selected_package = package_selector.value if package_selector else "Plan3"
+    max_days = max_days_per_plan[selected_package]
+    max_classes = max_classes_per_plan[selected_package]
+
+    if not package_selector:
+        ui.notify('Selecciona al menos un paquete', color='warning')
+        return
+    if not selected_days:
+        ui.notify('Selecciona al menos un día', color='warning')
+        return
+    if len(selected_days) > max_days:
+        ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
+        return
+    if classes_added is not None and classes_added >= max_classes:
+        ui.notify(f'Solo puedes agregar {max_classes} clases para {selected_package}', color='warning')
+        return
+    if not duration or not time_input_value:
+        ui.notify('Selecciona todos los campos', color='warning')
+        return
+
+    try:
+        h, m = map(int, time_input_value.split(':'))
+        hora_label = f'{h:02d}:00'
+        if hora_label not in hours_of_day:
+            ui.notify('Hora no válida', color='warning')
+            return
+    except:
+        ui.notify('Formato incorrecto HH:MM', color='warning')
+        return
+
+    intervalos = [hora_label]
+    if duration == '1 hora':
+        h2 = h + 1
+        if h2 < 24:
+            intervalos.append(f'{h2:02d}:00')
+    elif duration == '30 minutos':
+        m2 = m + 30
+        h2 = h + m2 // 60
+        m2 = m2 % 60
+        if h2 < 24:
+            intervalos.append(f'{h2:02d}:00')
+
+    for h_label in intervalos:
+        for d in days_of_week:
+            group_data[h_label][d] = 'Elegida' if d in selected_days else ''
+
+    new_rows = [{'hora': h_label, **group_data[h_label]} for h_label in hours_of_day if any(group_data[h_label][d] for d in days_of_week)]
+    table.rows = new_rows
+    table.update()
+    if classes_added is not None:
+        classes_added += 1
+    ui.notify('Hora agregada', type='positive')
+
+
+# =========================
+# OLD STUDENT
+# =========================
+@ui.page('/oldStudent')
+def OldStudent():
+    create_main_screen()
+
+    with ui.column().classes('w-full h-full p-4 md:p-8 items-center gap-6'):
+
+        with ui.card().classes('w-full max-w-3xl p-4') as assigned_card:
+            ui.label('¿Tienes clases ya asignadas?').classes('text-lg font-bold')
+            ui.separator()
+            has_classes = ui.radio(['Si', 'No'], value='No')
+
+        dynamic_container = ui.column().classes('w-full')
+
+        def show_class_logic(e=None):
+            dynamic_container.clear()
+            if has_classes.value == 'Si':
+                show_existing_classes(dynamic_container)
+            else:
+                show_new_student_like(dynamic_container)
+
+        has_classes.on('update:modelValue', show_class_logic)
+        show_class_logic()
+
+
+def show_existing_classes(container):
+    with container:
+        with ui.column().classes('w-full h-full p-4 md:p-8 items-center gap-6'):
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona tu paquete de clases').classes('text-lg font-bold')
+                ui.separator()
+                package_selector = ui.select(pack_of_classes, label='Paquetes').classes('w-auto min-w-[150px]')
+
+
+            # Selector de hora inicio y hora fin
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona hora de inicio y fin').classes('text-lg font-bold')
+                ui.separator()
+                date_selector = ui.date()
+                with ui.row().classes('gap-4 mt-2'):
+                    with ui.input('Hora inicio') as start_time:
+                        with ui.menu().props('no-parent-event') as menu1:
+                            with ui.time().bind_value(start_time):
+                                with ui.row().classes('justify-end'):
+                                    ui.button('Close', on_click=menu1.close).props('flat')
+                        with start_time.add_slot('append'):
+                            ui.icon('access_time').on('click', menu1.open).classes('cursor-pointer')
+
+                    with ui.input('Hora fin') as end_time:
+                        with ui.menu().props('no-parent-event') as menu2:
+                            with ui.time().bind_value(end_time):
+                                with ui.row().classes('justify-end'):
+                                    ui.button('Close', on_click=menu2.close).props('flat')
+                        with end_time.add_slot('append'):
+                            ui.icon('access_time').on('click', menu2.open).classes('cursor-pointer')
+
+                    add_hour_btn = ui.button('Agregar horas', color='primary')
+
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona los días').classes('text-lg font-bold')
+                ui.separator()
+                day_selector = ui.select(days_of_week, label='Días', multiple=True, value=[]).classes('w-auto min-w-[150px]')
+                # Habilitar días al seleccionar paquete
+                
+                def enable_days(e):
+                    if package_selector.value:
+                        day_selector.props('disable=false')
+                    else:
+                        day_selector.props('disable=true')
+                        day_selector.value = []
+
+                package_selector.on('update:modelValue', enable_days)
+
+                # Limitar días según paquete
+                def limit_days(e):
+                    selected_package = package_selector.value
+                    if not selected_package:
+                        return
+                    max_days = max_days_per_plan.get(selected_package, 3)
+                    if len(day_selector.value) > max_days:
+                        ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
+                        day_selector.value = day_selector.value[:max_days]
+
+                day_selector.on('update:modelValue', limit_days)
+
+            # Tabla
+            with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4'):
+                ui.label("Tabla de Clases").classes('text-lg font-bold')
+                ui.separator()
+                table = ui.table(
+                    columns=[{'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True}] +
+                            [{'name': d, 'label': d, 'field': d} for d in days_of_week],
+                    rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
+                    row_key='hora'
+                ).classes('w-full').props('dense bordered flat')
+
+            # Función para agregar horas seleccionadas en la tabla usando group_data
+            def add_hours_to_table():
+                if not package_selector.value:
+                    ui.notify('Selecciona un paquete primero', color='warning')
+                    return
+                if not day_selector.value:
+                    ui.notify('Selecciona al menos un día', color='warning')
+                    return
+                if not start_time.value or not end_time.value:
+                    ui.notify('Selecciona hora de inicio y fin', color='warning')
+                    return
+
+                # Convertir a enteros
+                try:
+                    h_start, m_start = map(int, start_time.value.split(':'))
+                    h_end, m_end = map(int, end_time.value.split(':'))
+                except:
+                    ui.notify('Formato de hora incorrecto HH:MM', color='warning')
+                    return
+
+                # Construir intervalos de 1 hora cada uno
+                intervalos = []
+                current_h = h_start
+                while current_h <= h_end and current_h < 24:
+                    intervalos.append(f'{current_h:02d}:00')
+                    current_h += 1
+
+                # Actualizar group_data
+                for h_lbl in intervalos:
+                    for d in days_of_week:
+                        group_data[h_lbl][d] = 'Elegida' if d in day_selector.value else ''
+
+                # Reconstruir tabla
+                new_rows = [{'hora': h_lbl, **group_data[h_lbl]} for h_lbl in hours_of_day if any(group_data[h_lbl][d] for d in days_of_week)]
+                table.rows = new_rows
+                table.update()
+                ui.notify('Horas agregadas', type='positive')
+
+            add_hour_btn.on('click', add_hours_to_table)
+
+def show_new_student_like(container):
+    with container:
+        with ui.column().classes('w-full h-full p-4 md:p-8 items-center gap-6'):
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona tu paquete de clases').classes('text-lg font-bold')
+                ui.separator()
+                package_selector = ui.select(pack_of_classes, label='Paquetes').classes('w-auto min-w-[150px]')
+
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona los días').classes('text-lg font-bold')
+                ui.separator()
+                day_selector = ui.select(days_of_week, label='Días', multiple=True, value=[]).classes('w-auto min-w-[150px]')
+
+                def limit_days(e):
+                    selected_package = package_selector.value
+                    max_days = max_days_per_plan.get(selected_package, 3)
+                    if len(day_selector.value) > max_days:
+                        ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
+                        day_selector.value = day_selector.value[:max_days]
+
+                day_selector.on('update:modelValue', limit_days)
+
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona duración').classes('text-lg font-bold')
+                ui.separator()
+                duration_selector = ui.select(duration_options, label='Duración').classes('w-48')
+
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona hora').classes('text-lg font-bold')
+                ui.separator()
+                with ui.row().classes('gap-4 mt-2'):
+                    with ui.input('Hora de inicio') as time_input:
+                        with ui.menu().props('no-parent-event') as menu:
+                            with ui.time().bind_value(time_input):
+                                with ui.row().classes('justify-end'):
+                                    ui.button('Close', on_click=menu.close).props('flat')
+                        with time_input.add_slot('append'):
+                            ui.icon('access_time').on('click', menu.open).classes('cursor-pointer')
+                    add_hour_btn = ui.button('Agregar hora', color='primary')
+
+            with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4'):
+                ui.label("Tabla de Clases").classes('text-lg font-bold')
+                ui.separator()
+                table = ui.table(
+                    columns=[{'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True}] +
+                            [{'name': d, 'label': d, 'field': d} for d in days_of_week],
+                    rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
+                    row_key='hora'
+                ).classes('w-full').props('dense bordered flat')
+
+            add_hour_btn.on('click', lambda: add_hour_global(time_input.value, day_selector.value, duration_selector.value, table, package_selector))
+
+
+# =========================
+# NEW STUDENT
+# =========================
+@ui.page('/newStudent')
+def new_student():
+    create_main_screen()
+
+    # Variables globales
+    days_of_week = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
+    duration_options = ['30 minutos', '1 hora']
+    hours_of_day = [f'{h:02d}:00' for h in range(24)]
+    group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
+
+    with ui.column().classes('w-full h-full p-4 md:p-8 items-center gap-6'):
+
+        # 1. Selector de paquete
+        with ui.card().classes('w-full max-w-3xl p-4'):
+            ui.label('Selecciona tu paquete de clases').classes('text-lg font-bold')
+            ui.separator()
+            package_selector = ui.select(pack_of_classes, label='Paquetes').classes('w-auto min-w-[150px]')
+
+        # 2. Selector de días
+        with ui.card().classes('w-full max-w-3xl p-4'):
+            ui.label('Selecciona los días').classes('text-lg font-bold')
+            ui.separator()
+            day_selector = ui.select(days_of_week, label='Días', multiple=True, value=[]).classes('w-auto min-w-[150px]')
+
+            # Limitar días según paquete
+            def limit_days(e):
+                selected_package = package_selector.value
+                max_days = max_days_per_plan.get(selected_package, 3)
+                if len(day_selector.value) > max_days:
+                    ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
+                    day_selector.value = day_selector.value[:max_days]
+
+            day_selector.on('update:modelValue', limit_days)
+
+        # 3. Selector de duración
+        with ui.card().classes('w-full max-w-3xl p-4'):
+            ui.label('Duración de la clase').classes('text-lg font-bold')
+            ui.separator()
+            duration_selector = ui.select(duration_options, label='Duración').classes('w-48')
+
+        # 4. Selector de hora
+        with ui.card().classes('w-full max-w-3xl p-4'):
+            ui.label('Selecciona la hora').classes('text-lg font-bold')
+            ui.separator()
+            with ui.row().classes('gap-4 mt-2'):
+                with ui.input('Hora de inicio') as time_input:
+                    with ui.menu().props('no-parent-event') as menu:
+                        with ui.time().bind_value(time_input):
+                            with ui.row().classes('justify-end'):
+                                ui.button('Close', on_click=menu.close).props('flat')
+                    with time_input.add_slot('append'):
+                        ui.icon('access_time').on('click', menu.open).classes('cursor-pointer')
+                add_hour_btn = ui.button('Agregar hora', color='primary')
+
+        # 5. Tabla de clases
+        table_card = ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4')
+        with table_card:
+            ui.label("Tabla de Clases").classes('text-lg font-bold')
+            ui.separator()
+            table = ui.table(
+                columns=[{'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True}] +
+                        [{'name': d, 'label': d, 'field': d} for d in days_of_week],
+                rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
+                row_key='hora',
+            ).classes('w-full').props('dense bordered flat')
+
+        # Función para agregar hora
+        def add_hour_action():
+            selected_days = day_selector.value
+            duration = duration_selector.value
+            hora_inicio = time_input.value
+
+            if not selected_days:
+                ui.notify('Selecciona al menos un día', color='warning')
+                return
+            if not duration:
+                ui.notify('Selecciona duración', color='warning')
+                return
+            if not hora_inicio:
+                ui.notify('Selecciona hora de inicio', color='warning')
+                return
+
+            try:
+                h, m = map(int, hora_inicio.split(':'))
+                hora_label = f'{h:02d}:00'
+                if hora_label not in hours_of_day:
+                    ui.notify('Hora no válida', color='warning')
+                    return
+            except:
+                ui.notify('Formato incorrecto HH:MM', color='warning')
+                return
+
+            # Calcular intervalos según duración
+            intervalos = [hora_label]
+            if duration == '30 minutos':
+                # en tabla de 1 hora no agregamos otra fila
+                pass
+            elif duration == '1 hora':
+                h2 = h + 1
+                if h2 < 24:
+                    intervalos.append(f'{h2:02d}:00')
+
+            for h_lbl in intervalos:
+                for d in days_of_week:
+                    group_data[h_lbl][d] = 'Elegida' if d in selected_days else ''
+
+            # Reconstruir filas de tabla
+            new_rows = [{'hora': h_lbl, **group_data[h_lbl]} for h_lbl in hours_of_day if any(group_data[h_lbl][d] for d in days_of_week)]
+            table.rows = new_rows
+            table.update()
+            ui.notify('Hora agregada', type='positive')
+            time_input.value = ''
+
+        add_hour_btn.on('click', add_hour_action)
+
+
+
+@ui.page('/myclasses')
+def my_classes():
+    create_main_screen()
+    with ui.column().classes('absolute-center items-center gap-4'):
+        ui.label('Aquí se muestran tus clases.')
+
+
+@ui.page('/profile')
+def profile():
+    create_main_screen()
+    with ui.column().classes('absolute-center items-center gap-4'):
+        ui.label('Página de perfil del usuario.')
