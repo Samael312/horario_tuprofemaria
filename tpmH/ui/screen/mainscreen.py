@@ -1,4 +1,5 @@
 from nicegui import ui, app
+from datetime import datetime
 
 # =========================
 # HEADER COMÚN
@@ -42,6 +43,7 @@ max_classes_per_plan = {"Plan1": 1, "Plan2": 1, "Plan3": 3}
 
 hours_of_day = [f'{h:02d}:00' for h in range(24)]
 group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
+group_data2 = {}
 
 # Función global para agregar hora
 def add_hour_global(time_input_value, selected_days, duration, table, package_selector=None, classes_added=None):
@@ -97,8 +99,7 @@ def add_hour_global(time_input_value, selected_days, duration, table, package_se
     if classes_added is not None:
         classes_added += 1
     ui.notify('Hora agregada', type='positive')
-
-
+    
 # =========================
 # OLD STUDENT
 # =========================
@@ -111,7 +112,7 @@ def OldStudent():
         with ui.card().classes('w-full max-w-3xl p-4') as assigned_card:
             ui.label('¿Tienes clases ya asignadas?').classes('text-lg font-bold')
             ui.separator()
-            has_classes = ui.radio(['Si', 'No'], value='No')
+            has_classes = ui.radio(['Si', 'No'], value='Si')
 
         dynamic_container = ui.column().classes('w-full')
 
@@ -139,25 +140,55 @@ def show_existing_classes(container):
             with ui.card().classes('w-full max-w-3xl p-4'):
                 ui.label('Selecciona hora de inicio y fin').classes('text-lg font-bold')
                 ui.separator()
-                date_selector = ui.date()
+
+                with ui.input("Date") as date_input:
+                    with ui.menu().props('no-parent-event') as menu:
+                        with ui.date().bind_value(date_input):
+                            with ui.row().classes('justify-end'):
+                                ui.button('Close', on_click=menu.close).props('flat')
+                    with date_input.add_slot('append'):
+                        ui.icon('event').on('click', menu.open).classes('cursor-pointer')
+
                 with ui.row().classes('gap-4 mt-2'):
-                    with ui.input('Hora inicio') as start_time:
-                        with ui.menu().props('no-parent-event') as menu1:
-                            with ui.time().bind_value(start_time):
+                    with ui.input('Hora inicio') as startD_time:
+                        with ui.menu().props('no-parent-event') as menuD:
+                            with ui.time().bind_value(startD_time):
                                 with ui.row().classes('justify-end'):
-                                    ui.button('Close', on_click=menu1.close).props('flat')
-                        with start_time.add_slot('append'):
-                            ui.icon('access_time').on('click', menu1.open).classes('cursor-pointer')
+                                    ui.button('Close', on_click=menuD.close).props('flat')
+                        with startD_time.add_slot('append'):
+                            ui.icon('access_time').on('click', menuD.open).classes('cursor-pointer')
 
-                    with ui.input('Hora fin') as end_time:
-                        with ui.menu().props('no-parent-event') as menu2:
-                            with ui.time().bind_value(end_time):
+                    with ui.input('Hora fin') as endDe_time:
+                        with ui.menu().props('no-parent-event') as menuD2:
+                            with ui.time().bind_value(endDe_time):
                                 with ui.row().classes('justify-end'):
-                                    ui.button('Close', on_click=menu2.close).props('flat')
-                        with end_time.add_slot('append'):
-                            ui.icon('access_time').on('click', menu2.open).classes('cursor-pointer')
+                                    ui.button('Close', on_click=menuD2.close).props('flat')
+                        with endDe_time.add_slot('append'):
+                            ui.icon('access_time').on('click', menuD2.open).classes('cursor-pointer')
 
-                    add_hour_btn = ui.button('Agregar horas', color='primary')
+                    add_hour_btn1 = ui.button('Agregar horas', color='primary')
+
+            # Tabla
+            with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4'):
+                ui.label("Tabla de Clases Asiganadas").classes('text-lg font-bold')
+                ui.separator()
+
+                table1 = ui.table(
+                    columns=[
+                        {'name': 'fecha', 'label': 'Fecha', 'field': 'fecha', 'sortable': True},
+                        {'name': 'dia', 'label': 'Día', 'field': 'dia', 'sortable': True},
+                        {'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True},
+                        ],
+                    rows=[
+                        {
+                            'fecha': '',
+                            'dia': '',
+                            'hora': h
+                        }
+                        for h in hours_of_day
+                    ],
+                    row_key='hora'
+                ).classes('w-full').props('dense bordered flat')
 
             with ui.card().classes('w-full max-w-3xl p-4'):
                 ui.label('Selecciona los días').classes('text-lg font-bold')
@@ -186,27 +217,123 @@ def show_existing_classes(container):
 
                 day_selector.on('update:modelValue', limit_days)
 
+                with ui.row().classes('gap-4 mt-2'):
+                    with ui.input('Hora inicio') as start_time:
+                        with ui.menu().props('no-parent-event') as menu1:
+                            with ui.time().bind_value(start_time):
+                                with ui.row().classes('justify-end'):
+                                    ui.button('Close', on_click=menu1.close).props('flat')
+                        with start_time.add_slot('append'):
+                            ui.icon('access_time').on('click', menu1.open).classes('cursor-pointer')
+
+                    with ui.input('Hora fin') as end_time:
+                        with ui.menu().props('no-parent-event') as menu2:
+                            with ui.time().bind_value(end_time):
+                                with ui.row().classes('justify-end'):
+                                    ui.button('Close', on_click=menu2.close).props('flat')
+                        with end_time.add_slot('append'):
+                            ui.icon('access_time').on('click', menu2.open).classes('cursor-pointer')
+
+                    add_hour_btn2 = ui.button('Agregar horas', color='primary')
+
             # Tabla
             with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4'):
                 ui.label("Tabla de Clases").classes('text-lg font-bold')
                 ui.separator()
-                table = ui.table(
+                table2 = ui.table(
                     columns=[{'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True}] +
                             [{'name': d, 'label': d, 'field': d} for d in days_of_week],
                     rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
                     row_key='hora'
                 ).classes('w-full').props('dense bordered flat')
+            
+            #Boton de guardado
+            save_button = ui.button('Guardar Información', on_click=None, color='positive').classes('mt-4')
 
             # Función para agregar horas seleccionadas en la tabla usando group_data
+            def add_hours_to_table_pref():
+                # Validaciones
+                if not package_selector.value:
+                    ui.notify('Selecciona un paquete primero', color='warning')
+                    return
+
+                if not startD_time.value or not endDe_time.value:
+                    ui.notify('Selecciona hora de inicio y fin', color='warning')
+                    return
+
+                if not date_input.value:
+                    ui.notify('Selecciona una fecha', color='warning')
+                    return
+
+                # Convertir horas a enteros
+                try:
+                    h_start, m_start = map(int, startD_time.value.split(':'))
+                    h_end, m_end = map(int, endDe_time.value.split(':'))
+                except:
+                    ui.notify('Formato de hora incorrecto HH:MM', color='warning')
+                    return
+
+                # Crear intervalos EXACTOS según el usuario
+                intervalos = []
+
+                # Agregar inicio exactamente como lo ingresó
+                intervalos.append(f"{h_start:02d}:{m_start:02d}")
+
+                # Si la hora fin es diferente, agregarla también
+                if not (h_start == h_end and m_start == m_end):
+                    intervalos.append(f"{h_end:02d}:{m_end:02d}")
+
+                # Obtener fecha y día
+                fecha = date_input.value  # YYYY-MM-DD
+                fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
+                dia_str = fecha_dt.strftime('%A')  # Monday, Tuesday...
+                
+                # Si lo quieres en español:
+                dias_es = {
+                    "Monday": "Lunes", "Tuesday": "Martes", "Wednesday": "Miércoles",
+                    "Thursday": "Jueves", "Friday": "Viernes", "Saturday": "Sábado", "Sunday": "Domingo"
+                }
+                dia = dias_es[dia_str]
+
+                 # Crear si no existe esa fecha
+                if fecha not in group_data2:
+                    group_data2[fecha] = {}
+
+                   # Guardar intervalos igual que en group_data
+                for h_lbl in intervalos:
+                    group_data2[fecha][h_lbl] = {
+                        'fecha': fecha,
+                        'dia': dia,
+                        'hora': h_lbl
+                    }
+
+                # Reconstruir tabla1
+                new_rows = []
+                for fecha_key, horas in group_data2.items():
+                    for h_lbl, data in horas.items():
+                        new_rows.append(data)
+
+                # Ordenar la tabla por fecha y hora
+                new_rows.sort(key=lambda x: (x['fecha'], x['hora']))
+
+                table1.rows = new_rows
+                table1.update()
+
+                ui.notify('Horas agregadas', type='positive')
+
+
+            add_hour_btn1.on('click', add_hours_to_table_pref)
+    
+    # Función para agregar horas seleccionadas en la tabla usando group_data
             def add_hours_to_table():
                 if not package_selector.value:
                     ui.notify('Selecciona un paquete primero', color='warning')
                     return
-                if not day_selector.value:
-                    ui.notify('Selecciona al menos un día', color='warning')
-                    return
                 if not start_time.value or not end_time.value:
                     ui.notify('Selecciona hora de inicio y fin', color='warning')
+                    return
+                if not day_selector.value:
+                    ui.notify('Selecciona al menos un día', color='warning')
                     return
 
                 # Convertir a enteros
@@ -231,11 +358,11 @@ def show_existing_classes(container):
 
                 # Reconstruir tabla
                 new_rows = [{'hora': h_lbl, **group_data[h_lbl]} for h_lbl in hours_of_day if any(group_data[h_lbl][d] for d in days_of_week)]
-                table.rows = new_rows
-                table.update()
+                table2.rows = new_rows
+                table2.update()
                 ui.notify('Horas agregadas', type='positive')
 
-            add_hour_btn.on('click', add_hours_to_table)
+            add_hour_btn2.on('click', add_hours_to_table)
 
 def show_new_student_like(container):
     with container:
@@ -288,7 +415,8 @@ def show_new_student_like(container):
                 ).classes('w-full').props('dense bordered flat')
 
             add_hour_btn.on('click', lambda: add_hour_global(time_input.value, day_selector.value, duration_selector.value, table, package_selector))
-
+            # Botón de guardado
+            save_button = ui.button('Guardar Información', on_click=None, color='positive').classes
 
 # =========================
 # NEW STUDENT

@@ -57,13 +57,6 @@ def create_ui(content_function=None):
                 app.storage.user.clear()
                 ui.navigate.to('/login')
 
-            ui.button(
-                'Cerrar sesión',
-                on_click=logout,
-                icon='logout',
-                color='negative'
-            ).props('outline round')
-
     # CONTENIDO CENTRAL
     with ui.column().classes('w-full p-4 md:p-8 items-center gap-8'):
         if content_function:
