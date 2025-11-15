@@ -41,64 +41,30 @@ pack_of_classes = ["Plan1", "Plan2", "Plan3"]
 max_days_per_plan = {"Plan1": 1, "Plan2": 2, "Plan3": 3}
 max_classes_per_plan = {"Plan1": 1, "Plan2": 1, "Plan3": 3}
 
-hours_of_day = [f'{h:02d}:00' for h in range(24)]
+hours_of_day = [f'{h:02d}:{m:02d}' 
+                for h in range(24) 
+                for m in (0, 30)]
+
 group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
+group_data1 = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 group_data2 = {}
 
-# Función global para agregar hora
-def add_hour_global(time_input_value, selected_days, duration, table, package_selector=None, classes_added=None):
-    selected_package = package_selector.value if package_selector else "Plan3"
-    max_days = max_days_per_plan[selected_package]
-    max_classes = max_classes_per_plan[selected_package]
 
-    if not package_selector:
-        ui.notify('Selecciona al menos un paquete', color='warning')
-        return
-    if not selected_days:
-        ui.notify('Selecciona al menos un día', color='warning')
-        return
-    if len(selected_days) > max_days:
-        ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
-        return
-    if classes_added is not None and classes_added >= max_classes:
-        ui.notify(f'Solo puedes agregar {max_classes} clases para {selected_package}', color='warning')
-        return
-    if not duration or not time_input_value:
-        ui.notify('Selecciona todos los campos', color='warning')
-        return
+# ===============================
+# FUNCIONES DE TABLAS (UNIVERSALES)
+# ===============================
 
-    try:
-        h, m = map(int, time_input_value.split(':'))
-        hora_label = f'{h:02d}:00'
-        if hora_label not in hours_of_day:
-            ui.notify('Hora no válida', color='warning')
-            return
-    except:
-        ui.notify('Formato incorrecto HH:MM', color='warning')
-        return
 
-    intervalos = [hora_label]
-    if duration == '1 hora':
-        h2 = h + 1
-        if h2 < 24:
-            intervalos.append(f'{h2:02d}:00')
-    elif duration == '30 minutos':
-        m2 = m + 30
-        h2 = h + m2 // 60
-        m2 = m2 % 60
-        if h2 < 24:
-            intervalos.append(f'{h2:02d}:00')
+def clear_table(table, group_dict):
+    """Limpia toda la tabla y el diccionario asociado."""
+    for h in group_dict:
+        for d in group_dict[h]:
+            group_dict[h][d] = ''
 
-    for h_label in intervalos:
-        for d in days_of_week:
-            group_data[h_label][d] = 'Elegida' if d in selected_days else ''
-
-    new_rows = [{'hora': h_label, **group_data[h_label]} for h_label in hours_of_day if any(group_data[h_label][d] for d in days_of_week)]
-    table.rows = new_rows
+    table.rows = []
     table.update()
-    if classes_added is not None:
-        classes_added += 1
-    ui.notify('Hora agregada', type='positive')
+
+    ui.notify("Tabla limpiada", color="positive")
     
 # =========================
 # OLD STUDENT
@@ -189,13 +155,21 @@ def show_existing_classes(container):
                     ],
                     row_key='hora'
                 ).classes('w-full').props('dense bordered flat')
+                # Botón de limpiar tabla
+                ui.button('Limpiar Tabla', on_click=lambda: clear_table(table1, group_data2), color='negative').classes('mt-2')
+
+            # Selector de duración y días para nuevas horas
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona duración').classes('text-lg font-bold')
+                ui.separator()
+                duration_selector = ui.select(duration_options, label='Duración').classes('w-48')
 
             with ui.card().classes('w-full max-w-3xl p-4'):
                 ui.label('Selecciona los días').classes('text-lg font-bold')
                 ui.separator()
                 day_selector = ui.select(days_of_week, label='Días', multiple=True, value=[]).classes('w-auto min-w-[150px]')
+
                 # Habilitar días al seleccionar paquete
-                
                 def enable_days(e):
                     if package_selector.value:
                         day_selector.props('disable=false')
@@ -226,13 +200,6 @@ def show_existing_classes(container):
                         with start_time.add_slot('append'):
                             ui.icon('access_time').on('click', menu1.open).classes('cursor-pointer')
 
-                    with ui.input('Hora fin') as end_time:
-                        with ui.menu().props('no-parent-event') as menu2:
-                            with ui.time().bind_value(end_time):
-                                with ui.row().classes('justify-end'):
-                                    ui.button('Close', on_click=menu2.close).props('flat')
-                        with end_time.add_slot('append'):
-                            ui.icon('access_time').on('click', menu2.open).classes('cursor-pointer')
 
                     add_hour_btn2 = ui.button('Agregar horas', color='primary')
 
@@ -246,11 +213,14 @@ def show_existing_classes(container):
                     rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
                     row_key='hora'
                 ).classes('w-full').props('dense bordered flat')
+                # Botón de limpiar tabla
+                ui.button('Limpiar Tabla', on_click=lambda: clear_table(table2, group_data), color='negative').classes('mt-2')
             
             #Boton de guardado
             save_button = ui.button('Guardar Información', on_click=None, color='positive').classes('mt-4')
 
             # Función para agregar horas seleccionadas en la tabla usando group_data
+            #add_hour_btn1
             def add_hours_to_table_pref():
                 # Validaciones
                 if not package_selector.value:
@@ -325,39 +295,60 @@ def show_existing_classes(container):
             add_hour_btn1.on('click', add_hours_to_table_pref)
     
     # Función para agregar horas seleccionadas en la tabla usando group_data
+    #add_hour_btn2
             def add_hours_to_table():
-                if not package_selector.value:
+                selected_package = package_selector.value
+                duration = duration_selector.value
+                hora_inicio = start_time.value
+
+                if not selected_package:
                     ui.notify('Selecciona un paquete primero', color='warning')
                     return
-                if not start_time.value or not end_time.value:
-                    ui.notify('Selecciona hora de inicio y fin', color='warning')
+                if not duration:
+                    ui.notify('Selecciona duración', color='warning')
+                    return  
+                if not start_time.value :
+                    ui.notify('Selecciona hora de inicio', color='warning')
                     return
                 if not day_selector.value:
                     ui.notify('Selecciona al menos un día', color='warning')
                     return
 
-                # Convertir a enteros
                 try:
-                    h_start, m_start = map(int, start_time.value.split(':'))
-                    h_end, m_end = map(int, end_time.value.split(':'))
+                    h, m = map(int, hora_inicio.split(':'))
+                    hora_label = f'{h:02d}:00'
+                    if hora_label not in hours_of_day:
+                        ui.notify('Hora no válida', color='warning')
+                        return
                 except:
-                    ui.notify('Formato de hora incorrecto HH:MM', color='warning')
+                    ui.notify('Formato incorrecto HH:MM', color='warning')
                     return
 
-                # Construir intervalos de 1 hora cada uno
-                intervalos = []
-                current_h = h_start
-                while current_h <= h_end and current_h < 24:
-                    intervalos.append(f'{current_h:02d}:00')
-                    current_h += 1
+                #Intervalos segun duracion
+                intervalos = [f'{h:02d}:{m:02d}']
+                if duration == '30 minutos':
+                    m2 = m + 30
+                    h2 = h + (m2 // 60)       # suma 1 hora si pasa de 60 min
+                    m2 = m2 % 60              # minutos finales corregidos
+                    if h2 < 24:
+                        intervalos.append(f'{h2:02d}:{m2:02d}')
+                elif duration == '1 hora':
+                    h2 = h + 1
+                    if h2 < 24:
+                        intervalos.append(f'{h2:02d}:00')
 
                 # Actualizar group_data
                 for h_lbl in intervalos:
+                    if h_lbl not in group_data:
+                        ui.notify(f'Hora {h_lbl} es invalida, solo intervalos de 1h o 30minutos')
+                        continue  # evita el KeyError y pasa al siguiente intervalo
                     for d in days_of_week:
                         group_data[h_lbl][d] = 'Elegida' if d in day_selector.value else ''
 
                 # Reconstruir tabla
-                new_rows = [{'hora': h_lbl, **group_data[h_lbl]} for h_lbl in hours_of_day if any(group_data[h_lbl][d] for d in days_of_week)]
+                new_rows = [{
+                    'hora': h_lbl, **group_data[h_lbl]} for h_lbl in hours_of_day 
+                    if any(group_data[h_lbl][d] for d in days_of_week)]
                 table2.rows = new_rows
                 table2.update()
                 ui.notify('Horas agregadas', type='positive')
@@ -392,31 +383,100 @@ def show_new_student_like(container):
                 duration_selector = ui.select(duration_options, label='Duración').classes('w-48')
 
             with ui.card().classes('w-full max-w-3xl p-4'):
-                ui.label('Selecciona hora').classes('text-lg font-bold')
-                ui.separator()
-                with ui.row().classes('gap-4 mt-2'):
-                    with ui.input('Hora de inicio') as time_input:
-                        with ui.menu().props('no-parent-event') as menu:
-                            with ui.time().bind_value(time_input):
-                                with ui.row().classes('justify-end'):
-                                    ui.button('Close', on_click=menu.close).props('flat')
-                        with time_input.add_slot('append'):
-                            ui.icon('access_time').on('click', menu.open).classes('cursor-pointer')
-                    add_hour_btn = ui.button('Agregar hora', color='primary')
+                    ui.label('Selecciona hora').classes('text-lg font-bold')
+                    ui.separator()
+                    with ui.row().classes('gap-4 mt-2'):
+                        with ui.input('Hora de inicio') as time_input:
+                            with ui.menu().props('no-parent-event') as menu:
+                                with ui.time().bind_value(time_input):
+                                    with ui.row().classes('justify-end'):
+                                        ui.button('Close', on_click=menu.close).props('flat')
+                            with time_input.add_slot('append'):
+                                ui.icon('access_time').on('click', menu.open).classes('cursor-pointer')
+                        add_hour_btn3 = ui.button('Agregar hora', color='primary')
 
             with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4'):
                 ui.label("Tabla de Clases").classes('text-lg font-bold')
                 ui.separator()
-                table = ui.table(
+                table4 = ui.table(
                     columns=[{'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True}] +
                             [{'name': d, 'label': d, 'field': d} for d in days_of_week],
                     rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
                     row_key='hora'
                 ).classes('w-full').props('dense bordered flat')
-
-            add_hour_btn.on('click', lambda: add_hour_global(time_input.value, day_selector.value, duration_selector.value, table, package_selector))
+                #Limpiar tabla
+                ui.button('Limpiar Tabla', on_click=lambda: clear_table(table4, group_data1), color='negative').classes('mt-2') 
+            
             # Botón de guardado
             save_button = ui.button('Guardar Información', on_click=None, color='positive').classes
+            
+             # Función para agregar hora
+        def add_hour_action():
+            selected_days = day_selector.value
+            duration = duration_selector.value
+            hora_inicio = time_input.value
+
+            if not selected_days:
+                ui.notify('Selecciona al menos un día', color='warning')
+                return
+            if not duration:
+                ui.notify('Selecciona duración', color='warning')
+                return
+            if not hora_inicio:
+                ui.notify('Selecciona hora de inicio', color='warning')
+                return
+
+            try:
+                h, m = map(int, hora_inicio.split(':'))
+                hora_label = f'{h:02d}:00'
+                if hora_label not in hours_of_day:
+                    ui.notify('Hora no válida', color='warning')
+                    return
+            except:
+                ui.notify('Formato incorrecto HH:MM', color='warning')
+                return
+
+            # Calcular intervalos
+            intervalos = [hora_label]
+            if duration == '30 minutos':
+                m2 = m + 30
+                h2 = h + (m2 // 60)
+                m2 = m2 % 60
+                if h2 < 24:
+                    intervalos.append(f'{h2:02d}:{m2:02d}')
+
+            elif duration == '1 hora':
+                h2 = h + 1
+                if h2 < 24:
+                    intervalos.append(f'{h2:02d}:00')
+
+            # Actualizar group_data1
+            for h_lbl in intervalos:
+                if h_lbl not in group_data1:
+                    ui.notify(f'Hora {h_lbl} es invalida, solo intervalos de 1h o 30minutos', color='warning')
+                    continue
+                for d in days_of_week:
+                    group_data1[h_lbl][d] = 'Elegida' if d in selected_days else ''
+
+            # ---- ESTA PARTE DEBE IR FUERA DEL BUCLE ----
+            # Reconstruir filas de tabla
+            new_rows = [
+                {'hora': h_lbl, **group_data1[h_lbl]}
+                for h_lbl in hours_of_day
+                if any(group_data1[h_lbl][d] for d in days_of_week)
+            ]
+
+            table4.rows = new_rows
+            table4.update()
+
+            ui.notify('Hora agregada', type='positive')
+            time_input.value = ''
+
+        add_hour_btn3.on('click', add_hour_action)
+
+                
+
+    
 
 # =========================
 # NEW STUDENT
@@ -428,7 +488,9 @@ def new_student():
     # Variables globales
     days_of_week = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
     duration_options = ['30 minutos', '1 hora']
-    hours_of_day = [f'{h:02d}:00' for h in range(24)]
+    hours_of_day = [f'{h:02d}:{m:02d}' 
+                for h in range(24) 
+                for m in (0, 30)]
     group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 
     with ui.column().classes('w-full h-full p-4 md:p-8 items-center gap-6'):
@@ -476,16 +538,21 @@ def new_student():
                 add_hour_btn = ui.button('Agregar hora', color='primary')
 
         # 5. Tabla de clases
-        table_card = ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4')
-        with table_card:
+        table3_card = ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4')
+        with table3_card:
             ui.label("Tabla de Clases").classes('text-lg font-bold')
             ui.separator()
-            table = ui.table(
+            table3 = ui.table(
                 columns=[{'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True}] +
                         [{'name': d, 'label': d, 'field': d} for d in days_of_week],
                 rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
                 row_key='hora',
             ).classes('w-full').props('dense bordered flat')
+            #Limpiar tabla
+            ui.button('Limpiar Tabla', on_click=lambda: clear_table(table3, group_data), color='negative').classes('mt-2')
+        
+        # Botón de guardado
+        save_button = ui.button('Guardar Información', on_click=None, color='positive').classes
 
         # Función para agregar hora
         def add_hour_action():
@@ -516,21 +583,28 @@ def new_student():
             # Calcular intervalos según duración
             intervalos = [hora_label]
             if duration == '30 minutos':
-                # en tabla de 1 hora no agregamos otra fila
-                pass
+               if duration == '30 minutos':
+                    m2 = m + 30
+                    h2 = h + (m2 // 60)       # suma 1 hora si pasa de 60 min
+                    m2 = m2 % 60              # minutos finales corregidos
+                    if h2 < 24:
+                        intervalos.append(f'{h2:02d}:{m2:02d}')
             elif duration == '1 hora':
                 h2 = h + 1
                 if h2 < 24:
                     intervalos.append(f'{h2:02d}:00')
 
             for h_lbl in intervalos:
+                if h_lbl not in group_data:
+                    ui.notify(f'Hora {h_lbl} es invalida, solo intervalos de 1h o 30minutos', color='warning')
+                    continue  # evita el KeyError y pasa al siguiente intervalo
                 for d in days_of_week:
-                    group_data[h_lbl][d] = 'Elegida' if d in selected_days else ''
+                    group_data[h_lbl][d] = 'Elegida' if d in day_selector.value else ''
 
             # Reconstruir filas de tabla
             new_rows = [{'hora': h_lbl, **group_data[h_lbl]} for h_lbl in hours_of_day if any(group_data[h_lbl][d] for d in days_of_week)]
-            table.rows = new_rows
-            table.update()
+            table3.rows = new_rows
+            table3.update()
             ui.notify('Hora agregada', type='positive')
             time_input.value = ''
 
