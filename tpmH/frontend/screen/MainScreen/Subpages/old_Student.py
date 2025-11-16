@@ -1,11 +1,19 @@
 from nicegui import ui
 from datetime import datetime
+import logging
 from components.header import create_main_screen
 from components.share_data import *
 from components.clear_table import clear_table
 from components.button_dur import make_add_hour_button
 from components.button_fecha import make_add_hours_by_date_button
+from components.h_selection import make_selection_handler
+from components.delete_rows import delete_selected_rows_v2
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(levelname)s | %(name)s | %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 # =========================
 # OLD STUDENT
@@ -94,10 +102,16 @@ def show_existing_classes(container):
                         }
                         for h in hours_of_day
                     ],
+                    selection='multiple',
                     row_key='hora'
                 ).classes('w-full').props('dense bordered flat')
-                # Botón de limpiar tabla
-                ui.button('Limpiar Tabla', on_click=lambda: clear_table(table1, group_data2), color='negative').classes('mt-2')
+                with ui.row().classes('gap-4 mt-2'):
+                    #Limpiar tabla
+                    ui.button('Limpiar Tabla', on_click=lambda: clear_table(table1, group_data3), color='yellow').classes('mt-2')
+                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table1, selection_state)).classes('mt-2')
+            selection_handler, selection_state = make_selection_handler(table1, logger=logger)
+            table1.on('selection', selection_handler)
+            ids = selection_state["selected_rows"]
 
             # Selector de duración y días para nuevas horas
             with ui.card().classes('w-full max-w-3xl p-4'):
@@ -152,10 +166,16 @@ def show_existing_classes(container):
                     columns=[{'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True}] +
                             [{'name': d, 'label': d, 'field': d} for d in days_of_week],
                     rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
+                    selection='multiple',
                     row_key='hora'
                 ).classes('w-full').props('dense bordered flat')
-                # Botón de limpiar tabla
-                ui.button('Limpiar Tabla', on_click=lambda: clear_table(table2, group_data), color='negative').classes('mt-2')
+                with ui.row().classes('gap-4 mt-2'):
+                    #Limpiar tabla
+                    ui.button('Limpiar Tabla', on_click=lambda: clear_table(table2, group_data1), color='yellow').classes('mt-2')
+                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table2, selection_state2)).classes('mt-2')
+            selection_handler2, selection_state2 = make_selection_handler(table2, logger=logger)
+            table2.on('selection', selection_handler2)
+            ids = selection_state2["selected_rows"]
             
             #Boton de guardado
             save_button = ui.button('Guardar Información', on_click=None, color='positive').classes('mt-4')
@@ -166,7 +186,7 @@ def show_existing_classes(container):
                 start_time_input=startD_time,
                 end_time_input=endDe_time,
                 date_input=date_input,
-                group_data=group_data2,
+                group_data=group_data3,
                 table=table1,
                 notify_success="Horas agregadas correctamente"
             )
@@ -178,7 +198,7 @@ def show_existing_classes(container):
                 duration_selector=duration_selector,
                 time_input=start_time,
                 valid_hours=hours_of_day,  # Lista de horas válidas
-                group_data=group_data,     # Dict donde se guardan los estados de las horas
+                group_data=group_data1,     # Dict donde se guardan los estados de las horas
                 days_of_week=days_of_week, # Lista de días de la semana
                 table=table2,              # Tabla a actualizar
                 # Opcionales: personalizar mensajes
@@ -238,11 +258,17 @@ def show_new_student_like(container):
                     columns=[{'name': 'hora', 'label': 'Hora', 'field': 'hora', 'sortable': True}] +
                             [{'name': d, 'label': d, 'field': d} for d in days_of_week],
                     rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
+                    selection='multiple',
                     row_key='hora'
                 ).classes('w-full').props('dense bordered flat')
-                #Limpiar tabla
-                ui.button('Limpiar Tabla', on_click=lambda: clear_table(table4, group_data1), color='negative').classes('mt-2') 
-            
+                with ui.row().classes('gap-4 mt-2'):
+                    #Limpiar tabla
+                    ui.button('Limpiar Tabla', on_click=lambda: clear_table(table4, group_data2), color='yellow').classes('mt-2')
+                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table4, selection_state3)).classes('mt-2')
+            selection_handler3, selection_state3 = make_selection_handler(table4, logger=logger)
+
+            table4.on('selection', selection_handler3)
+            ids = selection_state3["selected_rows"]
             # Botón de guardado
             save_button = ui.button('Guardar Información', on_click=None, color='positive').classes
             
@@ -253,7 +279,7 @@ def show_new_student_like(container):
                 duration_selector=duration_selector,
                 time_input=time_input,
                 valid_hours=hours_of_day,  # Lista de horas válidas
-                group_data=group_data,     # Dict donde se guardan los estados de las horas
+                group_data=group_data2,     # Dict donde se guardan los estados de las horas
                 days_of_week=days_of_week, # Lista de días de la semana
                 table=table4,              # Tabla a actualizar
                 # Opcionales: personalizar mensajes

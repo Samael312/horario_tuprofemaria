@@ -10,4 +10,5 @@ hours_of_day = [f'{h:02d}:{m:02d}' for h in range(24) for m in (0, 30)]
 # Tablas globales
 group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 group_data1 = {h: {d: '' for d in days_of_week} for h in hours_of_day}
-group_data2 = {}
+group_data2 = {h: {d: '' for d in days_of_week} for h in hours_of_day}
+group_data3 = {}

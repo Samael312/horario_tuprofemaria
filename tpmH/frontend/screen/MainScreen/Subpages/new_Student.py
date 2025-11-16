@@ -1,10 +1,18 @@
 from nicegui import ui
+import logging
 from components.header import create_main_screen
 from components.share_data import *
 from components.clear_table import clear_table
 from components.button_dur import make_add_hour_button
+from components.h_selection import make_selection_handler
+from components.delete_rows import delete_selected_rows_v2
 
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(levelname)s | %(name)s | %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 # =========================
 # NEW STUDENT
@@ -68,10 +76,17 @@ def new_student():
                         [{'name': d, 'label': d, 'field': d} for d in days_of_week],
                 rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
                 row_key='hora',
+                selection='multiple'
             ).classes('w-full').props('dense bordered flat')
-            #Limpiar tabla
-            ui.button('Limpiar Tabla', on_click=lambda: clear_table(table3, group_data), color='negative').classes('mt-2')
-        
+            with ui.row().classes('gap-4 mt-2'):
+                #Limpiar tabla
+                ui.button('Limpiar Tabla', on_click=lambda: clear_table(table3, group_data), color='yellow').classes('mt-2')
+                ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table3, selection_state)).classes('mt-2')
+        selection_handler, selection_state = make_selection_handler(table3, logger=logger)
+
+        table3.on('selection', selection_handler)
+        ids = selection_state["selected_rows"]
+
         # Botón de guardado
         save_button = ui.button('Guardar Información', on_click=None, color='positive').classes
 
@@ -96,3 +111,5 @@ def new_student():
             notify_bad_format="Formato incorrecto HH:MM",
             notify_interval_invalid="Hora {h_lbl} es invalida, solo intervalos válidos"
         )
+
+        
