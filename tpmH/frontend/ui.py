@@ -1,6 +1,6 @@
 # ui/ui.py
 from nicegui import ui, app
-from frontend.screen.login_signup_ui import setup_auth_system
+from frontend.screen.login_screen import setup_auth_system
 from frontend.screen.MainScreen.mainscreen import create_main_screen
 from frontend.screen.signup_screen import create_signup_screen
 from frontend.screen.reset_screen import reset_password_screen

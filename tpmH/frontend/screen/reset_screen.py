@@ -1,8 +1,9 @@
 # ui/reset_screen.py
 from nicegui import ui, app
-
-# Base de datos de ejemplo (mismo diccionario que signup)
-users_db = {}  # {username: {'email': ..., 'name': ..., 'surname': ..., 'password': ...}}
+from db.sqlite_db import SQLiteSession
+from db.models import User
+from passlib.hash import pbkdf2_sha256
+from auth.sync import sync_sqlite_to_postgres  # <-- importamos la sincronización
 
 unrestricted_page_routes = {'/reset', '/login'}
 
@@ -67,9 +68,9 @@ def reset_password_screen():
                 ui.label('Ingresa tus datos').classes('text-xl font-bold mb-2')
 
                 # Inputs
-                username_input = ui.input('User')
-                old_password_input = ui.input('Old Password', password=True, password_toggle_button=True)
-                new_password_input = ui.input('New Password', password=True, password_toggle_button=True)
+                username_input = ui.input('User').classes('w-full')
+                old_password_input = ui.input('Old Password', password=True, password_toggle_button=True).classes('w-full')
+                new_password_input = ui.input('New Password', password=True, password_toggle_button=True).classes('w-full')
 
                 # Función para cambiar contraseña
                 def try_reset():
@@ -81,16 +82,26 @@ def reset_password_screen():
                         ui.notify('Completa todos los campos', color='warning')
                         return
 
-                    if u not in users_db:
+                    session = SQLiteSession()
+                    user = session.query(User).filter_by(username=u).first()
+                    if not user:
                         ui.notify('El usuario no existe', color='negative')
+                        session.close()
                         return
 
-                    if users_db[u]['password'] != old_p:
+                    if not pbkdf2_sha256.verify(old_p, user.password_hash):
                         ui.notify('Contraseña antigua incorrecta', color='negative')
+                        session.close()
                         return
 
-                    # Reemplaza la contraseña por la nueva
-                    users_db[u]['password'] = new_p
+                    # Reemplaza la contraseña por la nueva (hash)
+                    user.password_hash = pbkdf2_sha256.hash(new_p)
+                    session.commit()
+                    session.close()
+
+                    # ====== SINCRONIZAR AUTOMÁTICAMENTE CON POSTGRES ======
+                    sync_sqlite_to_postgres()
+
                     ui.notify('Contraseña actualizada correctamente', color='positive')
                     ui.navigate.to('/login')
 

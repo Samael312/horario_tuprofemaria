@@ -1,9 +1,10 @@
 # ui/signup_screen.py
 from fastapi.responses import RedirectResponse
 from nicegui import app, ui
-
-# Diccionario de ejemplo para almacenar usuarios
-users_db = {}  # {username: {'email': ..., 'name': ..., 'surname': ..., 'password': ...}}
+from db.sqlite_db import SQLiteSession
+from db.models import User
+from auth.sync import sync_sqlite_to_postgres
+from passlib.hash import pbkdf2_sha256
 
 unrestricted_page_routes = {'/signup', '/login'}
 
@@ -69,11 +70,11 @@ def create_signup_screen():
                 ui.label('Crea tu cuenta').classes('text-xl font-bold mb-2')
 
                 # Inputs
-                email = ui.input('Email')
-                name = ui.input('Name')
-                surname = ui.input('Surname')
-                username = ui.input('User')
-                password = ui.input('Password', password=True, password_toggle_button=True)
+                email = ui.input('Email').classes('w-full')
+                name = ui.input('Name').classes('w-full')
+                surname = ui.input('Surname').classes('w-full')
+                username = ui.input('User').classes('w-full')
+                password = ui.input('Password', password=True, password_toggle_button=True).classes('w-full')
 
                 # Función de registro
                 def try_signup():
@@ -82,23 +83,32 @@ def create_signup_screen():
                     e = email.value.strip()
                     n = name.value.strip()
                     s = surname.value.strip()
-
-                    if not (u and p and e):
+                    
+                    if not (u and p and e and n and s):
                         ui.notify('Completa todos los campos obligatorios', color='warning')
                         return
 
-                    if u in users_db:
-                        ui.notify('El usuario ya existe', color='negative')
-                    else:
-                        users_db[u] = {
-                            'email': e,
-                            'name': n,
-                            'surname': s,
-                            'password': p
-                        }
-                        app.storage.user.update({'username': u, 'authenticated': True})
-                        ui.notify('Registro exitoso', color='positive')
-                        ui.navigate.to('/mainscreen')
+                    session = SQLiteSession()
+                    try:
+                        if session.query(User).filter_by(username=u).first():
+                            ui.notify("Usuario ya existe", color="warning")
+                            return
+                        if session.query(User).filter_by(email=e).first():
+                            ui.notify("Email ya registrado", color="warning")
+                            return
+
+                        password_hash = pbkdf2_sha256.hash(p)
+                        user = User(username=u, email=e, password_hash=password_hash)
+                        session.add(user)
+                        session.commit()
+                        ui.notify("Usuario registrado correctamente", color="positive")
+
+                        # ====== SINCRONIZAR AUTOMÁTICAMENTE ======
+                        sync_sqlite_to_postgres()
+
+                        ui.navigate.to('/login')
+                    finally:
+                        session.close()
 
                 # Botón de signup
                 ui.button('Sign up', on_click=try_signup, color='primary').classes('mt-2 w-full')

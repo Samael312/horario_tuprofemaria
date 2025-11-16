@@ -4,12 +4,16 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from nicegui import app, ui
-
+from passlib.hash import bcrypt
+from db.sqlite_db import SQLiteSession
+from db.models import User
+from auth.sync import sync_sqlite_to_postgres
+from passlib.hash import pbkdf2_sha256  # <--- importa esto
 
 # =====================================================
 # CONFIGURACIÓN SIMPLE DE USUARIOS
 # =====================================================
-passwords = {'user1': 'pass1', 'user2': 'pass2'}
+#passwords = {'user1': 'pass1', 'user2': 'pass2'}
 unrestricted_page_routes = {'/login', '/signup', '/reset'}
 
 
@@ -76,21 +80,35 @@ def setup_auth_system():
         def render_login_content():
             """Función que renderiza el formulario dentro del layout."""
             def try_login():
-                if passwords.get(username.value) == password.value:
-                    app.storage.user.update({'username': username.value, 'authenticated': True})
-                    ui.navigate.to('/mainscreen')
-                else:
-                    ui.notify('Usuario o contraseña incorrectos', color='negative')
+                u = username.value.strip()
+                p = password.value.strip()
+
+                session = SQLiteSession()
+                try:
+                    user = session.query(User).filter_by(username=u).first()
+                    if not user:
+                        ui.notify("Usuario o contraseña incorrectos", color="negative")
+                        return
+
+                    # Verificación usando pbkdf2_sha256
+                    if pbkdf2_sha256.verify(p, user.password_hash):
+                        app.storage.user.update({'username': u, 'authenticated': True})
+                        ui.navigate.to('/mainscreen')
+                    else:
+                        ui.notify("Usuario o contraseña incorrectos", color="negative")
+                finally:
+                    session.close()
+                    
             with ui.column().classes('items-center justify-center'):
                 ui.label('Sign in to Tuprofemaria').classes('text-3xl font-bold mb-4')
                 with ui.card().classes('w-80 p-4'):
                     ui.label('Log in').classes('text-xl font-bold mb-2')
-                    username = ui.input('User').on('keydown.enter', try_login)
+                    username = ui.input('User').on('keydown.enter', try_login).classes('w-full')
                     password = ui.input(
                         'Password',
                         password=True,
                         password_toggle_button=True
-                    ).on('keydown.enter', try_login)
+                    ).on('keydown.enter', try_login).classes('w-full')
                     ui.button('Sign in', on_click=try_login, color='primary').classes('mt-2 w-full')
                 with ui.row().classes('mt-2'):
                     ui.label("Don't have an account?")
