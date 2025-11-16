@@ -1,7 +1,7 @@
 ﻿# main.py
 import logging
 from nicegui import ui
-from ui.ui import init_ui
+from frontend.ui import init_ui
 
 # =====================================================
 # CONFIGURACIÓN
