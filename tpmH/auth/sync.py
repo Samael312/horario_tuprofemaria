@@ -20,6 +20,7 @@ def sync_sqlite_to_postgres():
                     name= u.name,
                     surname= u.surname,
                     email=u.email,
+                    role= u.role,
                     time_zone= u.time_zone,
                     password_hash=u.password_hash
                 ))

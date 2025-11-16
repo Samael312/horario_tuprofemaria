@@ -10,5 +10,6 @@ class User(Base):
     name = Column(String, unique=False)
     surname = Column(String, unique=False)
     email = Column(String, unique=True)
-    time_zone = Column(String, unique=True)
+    role = Column(String, unique= False, default= "client")
+    time_zone = Column(String, unique=False)
     password_hash = Column(String)

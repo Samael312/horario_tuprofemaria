@@ -112,6 +112,7 @@ def create_signup_screen():
                             name= n, 
                             surname= s,
                             email=e, 
+                            role="client",
                             time_zone=t,
                             password_hash=password_hash
                             

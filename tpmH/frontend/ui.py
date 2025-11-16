@@ -8,8 +8,10 @@ from frontend.screen.MainScreen.Mainpages.profile import profile
 from frontend.screen.MainScreen.Mainpages.myclasses import my_classes
 from frontend.screen.MainScreen.Subpages.new_Student import new_student
 from frontend.screen.MainScreen.Subpages.old_Student import OldStudent
-
-
+from frontend.screen.MainAdminScreen.main_admin_screen import main_admin_screen
+from frontend.screen.MainAdminScreen.Mainpages.AdminProfile import profileAdmin
+from frontend.screen.MainAdminScreen.Mainpages.myclassesAdmin import my_classesAdmin
+from frontend.screen.MainScreen.Mainpages.schedule import scheduleMaker
 
 
 
@@ -32,3 +34,11 @@ def init_ui():
         OldStudent()
         profile()
         my_classes()
+        scheduleMaker()
+        
+        
+        
+
+        main_admin_screen()
+        my_classesAdmin()
+        profileAdmin()

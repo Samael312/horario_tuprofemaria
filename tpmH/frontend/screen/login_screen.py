@@ -90,10 +90,17 @@ def setup_auth_system():
                         ui.notify("Usuario o contraseña incorrectos", color="negative")
                         return
 
-                    # Verificación usando pbkdf2_sha256
                     if pbkdf2_sha256.verify(p, user.password_hash):
-                        app.storage.user.update({'username': u, 'authenticated': True})
-                        ui.navigate.to('/mainscreen')
+                        app.storage.user.update({
+                            'username': u,
+                            'authenticated': True,
+                            'role': user.role
+                        })
+
+                        if user.role == "admin":
+                            ui.navigate.to('/admin')
+                        else:
+                            ui.navigate.to('/mainscreen')
                     else:
                         ui.notify("Usuario o contraseña incorrectos", color="negative")
                 finally:
