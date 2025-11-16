@@ -17,7 +17,10 @@ def sync_sqlite_to_postgres():
             if not pg_sess.query(User).filter_by(email=u.email).first():
                 pg_sess.add(User(
                     username=u.username,
+                    name= u.name,
+                    surname= u.surname,
                     email=u.email,
+                    time_zone= u.time_zone,
                     password_hash=u.password_hash
                 ))
                 count += 1

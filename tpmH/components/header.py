@@ -1,5 +1,6 @@
 from nicegui import ui, app
 
+
 def create_main_screen():
     def logout():
         app.storage.user.clear()

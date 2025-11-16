@@ -4,11 +4,18 @@ from frontend.screen.login_screen import setup_auth_system
 from frontend.screen.MainScreen.mainscreen import create_main_screen
 from frontend.screen.signup_screen import create_signup_screen
 from frontend.screen.reset_screen import reset_password_screen
+from frontend.screen.MainScreen.Mainpages.profile import profile
+from frontend.screen.MainScreen.Mainpages.myclasses import my_classes
+from frontend.screen.MainScreen.Subpages.new_Student import new_student
+from frontend.screen.MainScreen.Subpages.old_Student import OldStudent
+
+
 
 
 
 def init_ui():
     """Puente entre las pantallas de la app."""
+    
     setup_auth_system()  # agrega login + middleware
 
     # Página principal (solo accesible si el usuario está autenticado)
@@ -21,3 +28,7 @@ def init_ui():
         create_main_screen()  # delega la UI real a mainscreen.py
         create_signup_screen()  # delega la UI real a signup_screen.py
         reset_password_screen()  # delega la UI real a reset_screen.py
+        new_student()
+        OldStudent()
+        profile()
+        my_classes()

@@ -5,9 +5,12 @@ from db.sqlite_db import SQLiteSession
 from db.models import User
 from auth.sync import sync_sqlite_to_postgres
 from passlib.hash import pbkdf2_sha256
+import zoneinfo
+
 
 unrestricted_page_routes = {'/signup', '/login'}
-
+# Obtener todas las zonas horarias ordenadas alfabéticamente
+all_timezones = sorted(zoneinfo.available_timezones())
 # =====================================================
 # UI PRINCIPAL (HEADER + LAYOUT)
 # =====================================================
@@ -75,6 +78,11 @@ def create_signup_screen():
                 surname = ui.input('Surname').classes('w-full')
                 username = ui.input('User').classes('w-full')
                 password = ui.input('Password', password=True, password_toggle_button=True).classes('w-full')
+                time_zone = ui.select(
+                    options=all_timezones,
+                    label='Time Zone'
+                    
+                ).classes('w-full').props('use-input input-debounce="0"').classes('w-full')
 
                 # Función de registro
                 def try_signup():
@@ -83,8 +91,9 @@ def create_signup_screen():
                     e = email.value.strip()
                     n = name.value.strip()
                     s = surname.value.strip()
+                    t = time_zone.value.strip()
                     
-                    if not (u and p and e and n and s):
+                    if not (u and p and e and n and s and t):
                         ui.notify('Completa todos los campos obligatorios', color='warning')
                         return
 
@@ -98,7 +107,15 @@ def create_signup_screen():
                             return
 
                         password_hash = pbkdf2_sha256.hash(p)
-                        user = User(username=u, email=e, password_hash=password_hash)
+                        user = User(
+                            username=u,
+                            name= n, 
+                            surname= s,
+                            email=e, 
+                            time_zone=t,
+                            password_hash=password_hash
+                            
+                            )
                         session.add(user)
                         session.commit()
                         ui.notify("Usuario registrado correctamente", color="positive")

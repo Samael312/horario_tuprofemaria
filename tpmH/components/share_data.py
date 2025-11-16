@@ -1,3 +1,5 @@
+import zoneinfo
+
 days_of_week = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
 duration_options = ['30 minutos', '1 hora']
 pack_of_classes = ["Plan1", "Plan2", "Plan3"]
@@ -12,3 +14,5 @@ group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 group_data1 = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 group_data2 = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 group_data3 = {}
+
+
