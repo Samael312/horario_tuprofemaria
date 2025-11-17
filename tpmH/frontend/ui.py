@@ -12,6 +12,8 @@ from frontend.screen.MainAdminScreen.main_admin_screen import main_admin_screen
 from frontend.screen.MainAdminScreen.Mainpages.AdminProfile import profileAdmin
 from frontend.screen.MainAdminScreen.Mainpages.myclassesAdmin import my_classesAdmin
 from frontend.screen.MainScreen.Mainpages.schedule import scheduleMaker
+from frontend.screen.MainScreen.Subpages.editProfile import profile_edit
+
 
 
 
@@ -33,8 +35,10 @@ def init_ui():
         new_student()
         OldStudent()
         profile()
+        profile_edit()
         my_classes()
         scheduleMaker()
+
         
         
         

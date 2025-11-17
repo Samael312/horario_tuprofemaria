@@ -2,82 +2,113 @@ from nicegui import ui, app
 from components.header import create_main_screen
 
 from db.sqlite_db import SQLiteSession
-from db.postgres_db import PostgresSession
-from db.models import User
+from db.models import User, SchedulePref, AsignedClasses
+from components.delete_all import confirm_delete
 
 
 @ui.page('/profile')
 def profile():
     create_main_screen()
 
-    # -----------------------------------------
-    # FUNCIÓN QUE REALMENTE ELIMINA EL USUARIO
-    # -----------------------------------------
-    def delete_user_data():
-        username = app.storage.user.get("username")
+    # Título centrado
+    with ui.row().classes('w-full items-center justify-between mt-4 relative'):
+        # Label centrado
+        ui.label('Profile').classes('text-h4 absolute left-1/2 transform -translate-x-1/2')
 
-        if not username:
-            ui.notify("No hay un usuario autenticado", color="negative")
+        # FAB a la derecha
+        with ui.fab(icon='menu', label='Opciones'):  # icon válido de Material Icons
+            ui.fab_action(icon='edit', label='Editar', on_click=lambda: ui.navigate.to('/profile_edit'), color='positive')
+            ui.fab_action(icon='delete', label='Eliminar cuenta', on_click=confirm_delete, color='negative')
+
+
+    username = app.storage.user.get("username")
+    if not username:
+        ui.label("No hay usuario en sesión").classes('text-negative mt-4')
+        return
+
+    session = SQLiteSession()
+    try:
+        user_obj = session.query(User).filter(User.username == username).first()
+        if not user_obj:
+            ui.label("Usuario no encontrado en DB").classes('text-negative mt-4')
             return
 
-        # ============ SQLITE ============
-        try:
-            sqlite_session = SQLiteSession()
-            user_sqlite = sqlite_session.query(User).filter_by(username=username).first()
+        # ========================
+        # Datos personales
+        # ========================
+        with ui.column().classes('w-full max-w-5xl mx-auto p-4 md:p-8 gap-3'):
 
-            if user_sqlite:
-                sqlite_session.delete(user_sqlite)
-                sqlite_session.commit()
+            # Cada dato en su propia fila
+            for label_text in [
+                f"Nombre: {user_obj.name}",
+                f"Apellido: {user_obj.surname}",
+                f"Usuario: {user_obj.username}",
+                f"Zona horaria: {user_obj.time_zone if hasattr(user_obj, 'time_zone') else 'N/A'}",
+                f"Correo: {user_obj.email if hasattr(user_obj, 'email') else 'N/A'}"
+            ]:
+                with ui.row().classes('w-full'):
+                    ui.label(label_text).classes('text-base md:text-lg')
 
-            sqlite_session.close()
+            # ========================
+            # Tabla de Rangos Horarios
+            # ========================
+            schedule_data = session.query(SchedulePref).filter(
+                SchedulePref.username == username
+            ).all()
 
-        except Exception as e:
-            ui.notify(f"Error en SQLite: {e}", color="warning")
+            if schedule_data:
+                # Label encima de la tabla
+                ui.label("Rangos horarios:").classes('text-h5 mt-6')
 
-        # ============ POSTGRES ============
-        try:
-            pg_session = PostgresSession()
-            user_pg = pg_session.query(User).filter_by(username=username).first()
+                # Crear tabla y hacerla full width
+                schedule_table = ui.table(
+                    columns=[
+                        {'field': 'day', 'label': 'Día'},
+                        {'field': 'start', 'label': 'Hora Inicio'},
+                        {'field': 'end', 'label': 'Hora Fin'}
+                    ],
+                    rows=[]
+                )
+                schedule_table.classes('w-full')
 
-            if user_pg:
-                pg_session.delete(user_pg)
-                pg_session.commit()
+                for s in schedule_data:
+                    start_str = str(s.start_time).zfill(4)
+                    end_str = str(s.end_time).zfill(4)
+                    schedule_table.add_row({
+                        'day': s.days,
+                        'start': f"{start_str[:2]}:{start_str[2:]}",
+                        'end': f"{end_str[:2]}:{end_str[2:]}"
+                    })
 
-            pg_session.close()
+            # ========================
+            # Tabla de Clases Asignadas
+            # ========================
+            assigned_data = session.query(AsignedClasses).filter(
+                AsignedClasses.username == username
+            ).all()
 
-        except Exception as e:
-            ui.notify(f"Error en PostgreSQL: {e}", color="warning")
+            if assigned_data:
+                # Label encima de la tabla
+                ui.label("Clases asignadas:").classes('text-h5 mt-6')
 
-        # ============ LIMPIAR SESIÓN ============
-        app.storage.user.clear()
+                # Crear tabla y hacerla full width
+                assigned_table = ui.table(
+                    columns=[
+                        {'field': 'date', 'label': 'Fecha'},
+                        {'field': 'day', 'label': 'Día'},
+                        {'field': 'time', 'label': 'Hora'}
+                    ],
+                    rows=[]
+                )
+                assigned_table.classes('w-full')
 
-        ui.notify("Tus datos han sido eliminados correctamente", color="positive")
-        ui.navigate.to('/login')
+                for a in assigned_data:
+                    start_str = str(a.start_time).zfill(4)
+                    assigned_table.add_row({
+                        'date': a.date,
+                        'day': a.days,
+                        'time': f"{start_str[:2]}:{start_str[2:]}"
+                    })
 
-    # -----------------------------------------
-    # UI
-    # -----------------------------------------
-
-    with ui.column().classes('absolute-center items-center gap-4'):
-        ui.label('Página de perfil del usuario').classes('text-2xl font-bold')
-
-        # Creamos el diálogo ANTES del botón
-        with ui.dialog() as dialog:
-            with ui.card().classes('p-4'):
-                ui.label(
-                    "¿Seguro que quieres eliminar todos tus datos?\n"
-                    "Esta acción es irreversible."
-                ).classes('text-center mb-3')
-
-                with ui.row().classes('justify-around w-full'):
-                    ui.button("Cancelar", on_click=dialog.close)
-                    ui.button("Eliminar", color="negative",
-                              on_click=lambda: (dialog.close(), delete_user_data()))
-
-        # Botón que abre el diálogo
-        ui.button(
-            "Eliminar TODOS mis datos",
-            color="negative",
-            icon="delete_forever",
-            on_click=dialog.open  # <-- ESTE SÍ FUNCIONA
-        )
+    finally:
+        session.close()
