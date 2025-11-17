@@ -1,6 +1,6 @@
 from db.sqlite_db import SQLiteSession
 from db.postgres_db import PostgresSession
-from db.models import User
+from db.models import User, SchedulePref, AsignedClasses
 from nicegui import ui
 import logging
 
@@ -11,26 +11,95 @@ def sync_sqlite_to_postgres():
     pg_sess = PostgresSession()
 
     try:
-        users = sqlite_sess.query(User).all()
-        count = 0
-        for u in users:
+        total_users = 0
+        total_rangos = 0
+        total_clases = 0
+
+        # -----------------------------
+        # SYNC USERS
+        # -----------------------------
+        sqlite_users = sqlite_sess.query(User).all()
+        for u in sqlite_users:
             if not pg_sess.query(User).filter_by(email=u.email).first():
                 pg_sess.add(User(
                     username=u.username,
-                    name= u.name,
-                    surname= u.surname,
+                    name=u.name,
+                    surname=u.surname,
                     email=u.email,
-                    role= u.role,
-                    time_zone= u.time_zone,
+                    role=u.role,
+                    time_zone=u.time_zone,
                     password_hash=u.password_hash
                 ))
-                count += 1
+                total_users += 1
+
+        # -----------------------------
+        # SYNC RANGOS_HORARIOS
+        # -----------------------------
+        sqlite_rangos = sqlite_sess.query(SchedulePref).all()
+        for r in sqlite_rangos:
+            exists = pg_sess.query(SchedulePref).filter_by(
+                username=r.username,
+                start_time=r.start_time,
+                end_time=r.end_time
+            ).first()
+
+            if not exists:
+                pg_sess.add(SchedulePref(
+                    username=r.username,
+                    name=r.name,
+                    surname=r.surname,
+                    duration=r.duration,
+                    days=r.days,
+                    start_time=r.start_time,
+                    end_time=r.end_time,
+                    package=r.package
+                ))
+                total_rangos += 1
+
+        # -----------------------------
+        # SYNC CLASES_ASIGNADAS
+        # -----------------------------
+        sqlite_clases = sqlite_sess.query(AsignedClasses).all()
+        for c in sqlite_clases:
+            exists = pg_sess.query(AsignedClasses).filter_by(
+                username=c.username,
+                date=c.date,
+                start_time=c.start_time
+            ).first()
+
+            if not exists:
+                pg_sess.add(AsignedClasses(
+                    username=c.username,
+                    name=c.name,
+                    surname=c.surname,
+                    date=c.date,
+                    duration=c.duration,
+                    days=c.days,
+                    start_time=c.start_time,
+                    end_time=c.end_time,
+                    package=c.package
+                ))
+                total_clases += 1
+
+        # COMMIT FINAL
         pg_sess.commit()
-        ui.notify(f"Sincronización completada: {count} usuarios enviados a PostgreSQL", type="positive")
-        logger.info(f"{count} usuarios sincronizados a PostgreSQL")
+
+        # -----------------------------
+        # NOTIFICACIONES
+        # -----------------------------
+        msg = (
+            f"Sincronización completa:\n"
+            f"• {total_users} usuarios\n"
+            f"• {total_rangos} rangos horarios\n"
+            f"• {total_clases} clases asignadas"
+        )
+        ui.notify(msg, type="positive")
+        logger.info(msg)
+
     except Exception as ex:
-        ui.notify(f"Error sincronizando usuarios: {ex}", type="negative")
+        ui.notify(f"Error sincronizando datos: {ex}", type="negative")
         logger.exception(ex)
+
     finally:
         sqlite_sess.close()
         pg_sess.close()

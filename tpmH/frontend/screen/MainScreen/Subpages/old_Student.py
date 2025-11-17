@@ -1,4 +1,4 @@
-from nicegui import ui
+from nicegui import ui, app
 from datetime import datetime
 import logging
 from components.header import create_main_screen
@@ -8,6 +8,8 @@ from components.button_dur import make_add_hour_button
 from components.button_fecha import make_add_hours_by_date_button
 from components.h_selection import make_selection_handler
 from components.delete_rows import delete_selected_rows_v2
+from components.save_rgo import create_save_schedule_button
+from components.save_asg import create_save_asgn_classes
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -43,6 +45,8 @@ def OldStudent():
 
 
 def show_existing_classes(container):
+    user = app.storage.user.get("username", "Usuario")
+
     with container:
         with ui.column().classes('w-full h-full p-4 md:p-8 items-center gap-6'):
             with ui.card().classes('w-full max-w-3xl p-4'):
@@ -53,7 +57,7 @@ def show_existing_classes(container):
 
             # Selector de hora inicio y hora fin
             with ui.card().classes('w-full max-w-3xl p-4'):
-                ui.label('Selecciona hora de inicio y fin').classes('text-lg font-bold')
+                ui.label('Selecciona la fecha').classes('text-lg font-bold')
                 ui.separator()
 
                 with ui.input("Date") as date_input:
@@ -63,8 +67,14 @@ def show_existing_classes(container):
                                 ui.button('Close', on_click=menu.close).props('flat')
                     with date_input.add_slot('append'):
                         ui.icon('event').on('click', menu.open).classes('cursor-pointer')
-
+                
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                ui.label('Selecciona duración').classes('text-lg font-bold')
+                ui.separator()
                 with ui.row().classes('gap-4 mt-2'):
+                    duration_selector1 = ui.select(duration_options, label='Duración').classes('w-48')
+
+
                     with ui.input('Hora inicio') as startD_time:
                         with ui.menu().props('no-parent-event') as menuD:
                             with ui.time().bind_value(startD_time):
@@ -72,14 +82,6 @@ def show_existing_classes(container):
                                     ui.button('Close', on_click=menuD.close).props('flat')
                         with startD_time.add_slot('append'):
                             ui.icon('access_time').on('click', menuD.open).classes('cursor-pointer')
-
-                    with ui.input('Hora fin') as endDe_time:
-                        with ui.menu().props('no-parent-event') as menuD2:
-                            with ui.time().bind_value(endDe_time):
-                                with ui.row().classes('justify-end'):
-                                    ui.button('Close', on_click=menuD2.close).props('flat')
-                        with endDe_time.add_slot('append'):
-                            ui.icon('access_time').on('click', menuD2.open).classes('cursor-pointer')
 
                     add_hour_btn1 = ui.button('Agregar horas', color='primary')
 
@@ -113,11 +115,6 @@ def show_existing_classes(container):
             table1.on('selection', selection_handler)
             ids = selection_state["selected_rows"]
 
-            # Selector de duración y días para nuevas horas
-            with ui.card().classes('w-full max-w-3xl p-4'):
-                ui.label('Selecciona duración').classes('text-lg font-bold')
-                ui.separator()
-                duration_selector = ui.select(duration_options, label='Duración').classes('w-48')
 
             with ui.card().classes('w-full max-w-3xl p-4'):
                 ui.label('Selecciona los días').classes('text-lg font-bold')
@@ -146,6 +143,13 @@ def show_existing_classes(container):
 
                 day_selector.on('update:modelValue', limit_days)
 
+            # Selector de duración y días para nuevas horas
+            with ui.card().classes('w-full max-w-3xl p-4'):
+                with ui.row().classes('gap-4 mt-2'):
+                    ui.label('Selecciona duración y horas').classes('text-lg font-bold')
+                    ui.separator()
+                    duration_selector2 = ui.select(duration_options, label='Duración').classes('w-48')
+                
                 with ui.row().classes('gap-4 mt-2'):
                     with ui.input('Hora inicio') as start_time:
                         with ui.menu().props('no-parent-event') as menu1:
@@ -155,6 +159,13 @@ def show_existing_classes(container):
                         with start_time.add_slot('append'):
                             ui.icon('access_time').on('click', menu1.open).classes('cursor-pointer')
 
+                    with ui.input('Hora fin') as end_time:
+                                with ui.menu().props('no-parent-event') as menuD2:
+                                    with ui.time().bind_value(end_time):
+                                        with ui.row().classes('justify-end'):
+                                            ui.button('Close', on_click=menuD2.close).props('flat')
+                                with end_time.add_slot('append'):
+                                    ui.icon('access_time').on('click', menuD2.open).classes('cursor-pointer')
 
                     add_hour_btn = ui.button('Agregar horas', color='primary')
 
@@ -178,14 +189,14 @@ def show_existing_classes(container):
             ids = selection_state2["selected_rows"]
             
             #Boton de guardado
-            save_button = ui.button('Guardar Información', on_click=None, color='positive').classes('mt-4')
-
+            save_button = ui.button('Guardar Información', color='positive')
             make_add_hours_by_date_button(
                 add_hour_btn1,
+                button_id=f"asignadas_de_{user}",
                 package_selector=package_selector,
                 start_time_input=startD_time,
-                end_time_input=endDe_time,
-                date_input=date_input,
+                duration_selector= duration_selector1,
+                date_input= date_input,
                 group_data=group_data3,
                 table=table1,
                 notify_success="Horas agregadas correctamente"
@@ -193,25 +204,38 @@ def show_existing_classes(container):
 
 
             make_add_hour_button(
-                add_hour_btn,             # El botón que dispara la acción
+                add_hour_btn,
+                button_id=f"rango_horario_de_{user}",
                 day_selector=day_selector,
-                duration_selector=duration_selector,
+                duration_selector=duration_selector2,
                 time_input=start_time,
-                valid_hours=hours_of_day,  # Lista de horas válidas
-                group_data=group_data1,     # Dict donde se guardan los estados de las horas
-                days_of_week=days_of_week, # Lista de días de la semana
-                table=table2,              # Tabla a actualizar
-                # Opcionales: personalizar mensajes
+                end_time_input=end_time,
+                valid_hours=hours_of_day,
+                group_data=group_data1,
+                days_of_week=days_of_week,
+                table=table2,
                 notify_success="Hora agregada",
                 notify_missing_day="Selecciona al menos un día",
                 notify_missing_duration="Selecciona duración",
                 notify_missing_time="Selecciona hora de inicio",
+                notify_missing_end_time="Selecciona hora de fin",
                 notify_invalid_hour="Hora no válida",
                 notify_bad_format="Formato incorrecto HH:MM",
                 notify_interval_invalid="Hora {h_lbl} es invalida, solo intervalos válidos"
-)
+        )
+            
+        create_save_asgn_classes(  
+            button=save_button,
+            user=app.storage.user.get("username"),
+            table_clases=table1,
+            table_rangos=table2,
+            duration_selector=duration_selector2,
+            days_of_week=days_of_week,
+            package_selector=package_selector
+        )
 
 def show_new_student_like(container):
+    user = app.storage.user.get("username", "Usuario")
     with container:
         with ui.column().classes('w-full h-full p-4 md:p-8 items-center gap-6'):
             with ui.card().classes('w-full max-w-3xl p-4'):
@@ -232,25 +256,31 @@ def show_new_student_like(container):
                         day_selector.value = day_selector.value[:max_days]
 
                 day_selector.on('update:modelValue', limit_days)
-
+            
             with ui.card().classes('w-full max-w-3xl p-4'):
-                ui.label('Selecciona duración').classes('text-lg font-bold')
+                ui.label('Selecciona duración y horas').classes('text-lg font-bold')
                 ui.separator()
-                duration_selector = ui.select(duration_options, label='Duración').classes('w-48')
-
-            with ui.card().classes('w-full max-w-3xl p-4'):
-                    ui.label('Selecciona hora').classes('text-lg font-bold')
-                    ui.separator()
-                    with ui.row().classes('gap-4 mt-2'):
-                        with ui.input('Hora de inicio') as time_input:
+                duration_selector3 = ui.select(duration_options, label='Duración').classes('w-48')
+            
+                with ui.row().classes('gap-4 mt-2'):
+                    with ui.input('Hora inicio') as start_time:
                             with ui.menu().props('no-parent-event') as menu:
-                                with ui.time().bind_value(time_input):
+                                with ui.time().bind_value(start_time):
                                     with ui.row().classes('justify-end'):
                                         ui.button('Close', on_click=menu.close).props('flat')
-                            with time_input.add_slot('append'):
+                            with start_time.add_slot('append'):
                                 ui.icon('access_time').on('click', menu.open).classes('cursor-pointer')
-                        add_hour_btn1 = ui.button('Agregar hora', color='primary')
 
+                    with ui.input('Hora fin') as end_time:
+                            with ui.menu().props('no-parent-event') as menuD2:
+                                with ui.time().bind_value(end_time):
+                                    with ui.row().classes('justify-end'):
+                                        ui.button('Close', on_click=menuD2.close).props('flat')
+                            with end_time.add_slot('append'):
+                                ui.icon('access_time').on('click', menuD2.open).classes('cursor-pointer')
+
+                    add_hour_btn2 = ui.button('Agregar horas', color='primary')
+                    
             with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4'):
                 ui.label("Tabla de Clases").classes('text-lg font-bold')
                 ui.separator()
@@ -270,24 +300,35 @@ def show_new_student_like(container):
             table4.on('selection', selection_handler3)
             ids = selection_state3["selected_rows"]
             # Botón de guardado
-            save_button = ui.button('Guardar Información', on_click=None, color='positive').classes
+            save_button = ui.button('Guardar Información',color='positive')
             
              # Función para agregar hora
             make_add_hour_button(
-                add_hour_btn1,             # El botón que dispara la acción
+                add_hour_btn2,
+                button_id=f"rangos_horario_de_{user}",
                 day_selector=day_selector,
-                duration_selector=duration_selector,
-                time_input=time_input,
-                valid_hours=hours_of_day,  # Lista de horas válidas
-                group_data=group_data2,     # Dict donde se guardan los estados de las horas
-                days_of_week=days_of_week, # Lista de días de la semana
-                table=table4,              # Tabla a actualizar
-                # Opcionales: personalizar mensajes
+                duration_selector=duration_selector3,
+                time_input=start_time,
+                end_time_input= end_time,
+                valid_hours=hours_of_day,
+                group_data=group_data2,
+                days_of_week=days_of_week,
+                table=table4,
                 notify_success="Hora agregada",
                 notify_missing_day="Selecciona al menos un día",
                 notify_missing_duration="Selecciona duración",
                 notify_missing_time="Selecciona hora de inicio",
+                notify_missing_end_time="Selecciona hora de fin",
                 notify_invalid_hour="Hora no válida",
                 notify_bad_format="Formato incorrecto HH:MM",
                 notify_interval_invalid="Hora {h_lbl} es invalida, solo intervalos válidos"
-)
+        )
+            
+            create_save_schedule_button(
+                button= save_button,
+                table=table4,
+                days_of_week=days_of_week,
+                duration_selector=duration_selector3,
+                package_selector=package_selector
+        )
+  
