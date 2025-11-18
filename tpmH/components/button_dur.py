@@ -81,8 +81,6 @@ def make_add_hour_button(
             for d in days_of_week:
                 if d in selected_days:
                     group_data[h_lbl][d] = f"{hora_inicio_lbl}-{hora_fin_lbl}"
-                else:
-                    group_data[h_lbl][d] = ""
 
             # Guardar fuente del botón
             group_data[h_lbl]["source"] = button_id

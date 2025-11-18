@@ -1,6 +1,7 @@
 from db.sqlite_db import SQLiteSession
 from db.models import SchedulePref, AsignedClasses, User
 from nicegui import ui, app
+from auth.sync import sync_sqlite_to_postgres
 import logging
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ def create_save_asgn_classes(button, user, table_clases, table_rangos, duration_
             #   GUARDAR CAMBIOS
             # =====================
             session.commit()
+            sync_sqlite_to_postgres()
             ui.notify("Información guardada correctamente", type="positive")
             logger.info("Datos guardados correctamente")
 

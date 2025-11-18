@@ -8,7 +8,7 @@ def delete_selected_rows_v2(
     table,
     selection_state,
     *,
-    id_column="hora",           # Clave primaria real de tus filas
+    id_column="ID",           # Clave primaria real de tus filas
     success_message="Se eliminaron {count} fila(s).",
     empty_selection_msg="Selecciona una o más filas para eliminar.",
 ):

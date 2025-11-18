@@ -110,7 +110,7 @@ def show_existing_classes(container):
                 with ui.row().classes('gap-4 mt-2'):
                     #Limpiar tabla
                     ui.button('Limpiar Tabla', on_click=lambda: clear_table(table1, group_data3), color='yellow').classes('mt-2')
-                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table1, selection_state)).classes('mt-2')
+                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table1, selection_state, id_column="hora")).classes('mt-2')
             selection_handler, selection_state = make_selection_handler(table1, logger=logger)
             table1.on('selection', selection_handler)
             ids = selection_state["selected_rows"]
@@ -183,7 +183,7 @@ def show_existing_classes(container):
                 with ui.row().classes('gap-4 mt-2'):
                     #Limpiar tabla
                     ui.button('Limpiar Tabla', on_click=lambda: clear_table(table2, group_data1), color='yellow').classes('mt-2')
-                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table2, selection_state2)).classes('mt-2')
+                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table2, selection_state2, id_column="hora")).classes('mt-2')
             selection_handler2, selection_state2 = make_selection_handler(table2, logger=logger)
             table2.on('selection', selection_handler2)
             ids = selection_state2["selected_rows"]
@@ -248,14 +248,14 @@ def show_new_student_like(container):
                 ui.separator()
                 day_selector = ui.select(days_of_week, label='Días', multiple=True, value=[]).classes('w-auto min-w-[150px]')
 
-                def limit_days(e):
-                    selected_package = package_selector.value
-                    max_days = max_days_per_plan.get(selected_package, 3)
-                    if len(day_selector.value) > max_days:
-                        ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
-                        day_selector.value = day_selector.value[:max_days]
+                #def limit_days(e):
+                #    selected_package = package_selector.value
+                #    max_days = max_days_per_plan.get(selected_package, 3)
+                #    if len(day_selector.value) > max_days:
+                #        ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
+                #        day_selector.value = day_selector.value[:max_days]
 
-                day_selector.on('update:modelValue', limit_days)
+                #day_selector.on('update:modelValue', limit_days)
             
             with ui.card().classes('w-full max-w-3xl p-4'):
                 ui.label('Selecciona duración y horas').classes('text-lg font-bold')
@@ -294,7 +294,7 @@ def show_new_student_like(container):
                 with ui.row().classes('gap-4 mt-2'):
                     #Limpiar tabla
                     ui.button('Limpiar Tabla', on_click=lambda: clear_table(table4, group_data2), color='yellow').classes('mt-2')
-                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table4, selection_state3)).classes('mt-2')
+                    ui.button('Eliminar filas seleccionadas',color='negative',on_click=lambda: delete_selected_rows_v2(table4, selection_state3, id_column="hora")).classes('mt-2')
             selection_handler3, selection_state3 = make_selection_handler(table4, logger=logger)
 
             table4.on('selection', selection_handler3)
