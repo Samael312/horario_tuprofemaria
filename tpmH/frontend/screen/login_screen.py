@@ -94,7 +94,13 @@ def setup_auth_system():
                         app.storage.user.update({
                             'username': u,
                             'authenticated': True,
-                            'role': user.role
+                            'role': user.role,
+                            'name': user.name,
+                            'surname': user.surname,
+                            'email':user.email,
+                            'time_zone':user.time_zone
+                            
+
                         })
 
                         if user.role == "admin":

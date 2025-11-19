@@ -12,6 +12,8 @@ class User(Base):
     email = Column(String, unique=True)
     role = Column(String, unique= False, default= "client")
     time_zone = Column(String, unique=False)
+    package = Column(String, unique=False, default= "") 
+    status = Column(String, unique=False, default="Active")
     password_hash = Column(String)
 
 class SchedulePref(Base):

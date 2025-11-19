@@ -13,10 +13,13 @@ def main_admin_screen():
         ui.navigate.to('/mainscreen')
         return
 
-    with ui.column().classes('items-center p-8'):
-        ui.label("Admin Dashboard").classes('text-3xl font-bold')
+    with ui.column().classes('w-full p-4 md:p-8 absolute-center items-center gap-8'):
+        ui.label(f'Bienvenido, {app.storage.user.get("name", "Usuario")}!').classes('text-3xl font-bold')
 
-        ui.label("Bienvenido administrador").classes('text-lg')
+        ui.label("Bienvenido administrador").classes('text-3x1')
         
-        # Aquí puedes agregar más herramientas de admin
-        ui.button("Ver usuarios", on_click=lambda: ui.notify("Función pendiente"))
+        with ui.row().classes('gap-6'):
+            # Aquí puedes agregar más herramientas de admin
+            ui.button("Ver estudiantes", on_click= lambda: ui.navigate.to('/Students'))
+            ui.button("Ver Mis Clases", on_click=lambda:ui.navigate.to('/myclassesAdmin'))
+            

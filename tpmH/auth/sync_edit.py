@@ -28,6 +28,8 @@ def sync_sqlite_to_postgres_edit():
                 pg_user.email = u.email
                 pg_user.time_zone = u.time_zone
                 pg_user.role = u.role
+                pg_user.package = u.package
+                pg_user.status = u.status
                 pg_user.password_hash = u.password_hash
                 total_users += 1
             else:

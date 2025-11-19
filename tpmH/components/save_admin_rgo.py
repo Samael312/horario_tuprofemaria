@@ -1,10 +1,10 @@
 from nicegui import ui, app
 from db.sqlite_db import SQLiteSession
-from db.models import User, SchedulePref
+from db.models import User, ScheduleProf
 from auth.sync import sync_sqlite_to_postgres
 
 
-def create_save_schedule_button(button, table, days_of_week, duration_selector, package_selector):
+def create_save_schedule_admin_button(button, table, days_of_week, availability):
     """
     Crea un botón reutilizable para guardar horarios.
 
@@ -15,7 +15,7 @@ def create_save_schedule_button(button, table, days_of_week, duration_selector, 
         package_selector (ui.element): selector de paquete.
     """
 
-    def save_schedule():
+    def save_admin_rgo_schedule():
         username = app.storage.user.get("username")
 
         if not username:
@@ -31,8 +31,6 @@ def create_save_schedule_button(button, table, days_of_week, duration_selector, 
                 return
 
             # --- NUEVO: Guardar el paquete en el Usuario ---
-            # Actualizamos el campo 'package' del usuario con el valor del selector
-            user_obj.package = package_selector.value or ""
             # -----------------------------------------------
 
             table_rows = table.rows
@@ -63,17 +61,16 @@ def create_save_schedule_button(button, table, days_of_week, duration_selector, 
                         continue
                     rangos_guardados.add(day)
 
-                    pref = SchedulePref(
+                    prof = ScheduleProf(
                         username=user_obj.username,
                         name=user_obj.name,
                         surname=user_obj.surname,
-                        duration=duration_selector.value,
+                        availability=availability.value,
                         days=day,
                         start_time=start_time,
                         end_time=end_time,
-                        package=package_selector.value or ""
                     )
-                    session.add(pref)
+                    session.add(prof)
 
             session.commit()
 
@@ -85,5 +82,5 @@ def create_save_schedule_button(button, table, days_of_week, duration_selector, 
         finally:
             session.close()
 
-    button.on('click', save_schedule)
-    return save_schedule
+    button.on('click', save_admin_rgo_schedule)
+    return save_admin_rgo_schedule

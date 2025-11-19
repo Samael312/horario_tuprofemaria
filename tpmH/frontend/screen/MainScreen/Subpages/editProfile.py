@@ -252,7 +252,7 @@ def profile_edit():
                         session2.commit()
                         sync_sqlite_to_postgres_edit()
                         ui.notify("Datos actualizados correctamente", color='positive')
-                        ui.timer(0.0, lambda: ui.navigate.to(('/profile')))
+                        ui.timer(1.0, lambda: ui.navigate.to(('/profile')))
                     except Exception as e:
                         session2.rollback()
                         logger.error(f"Error al guardar cambios: {e}")
