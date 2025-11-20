@@ -15,6 +15,7 @@ def create_save_asgn_classes(button, user, table_clases, table_rangos, duration_
             #   OBTENER NOMBRE Y APELLIDO
             # ============================
             user_obj = session.query(User).filter_by(username=user).first()
+            user_obj.package = package_selector.value or ""
             name_val = user_obj.name if user_obj else user
             surname_val = user_obj.surname if user_obj else ""
 

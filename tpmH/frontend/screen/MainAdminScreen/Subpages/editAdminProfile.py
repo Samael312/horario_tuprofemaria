@@ -1,24 +1,24 @@
 from nicegui import ui, app
 import logging
-from components.header import create_main_screen
+from components.headerAdmin import create_admin_screen
 from db.sqlite_db import SQLiteSession
-from db.models import User, SchedulePref
+from db.models import User, ScheduleProf
 from auth.sync_edit import sync_sqlite_to_postgres_edit
 from zoneinfo import available_timezones
 from components.h_selection import make_selection_handler
 from components.clear_table import clear_table
 from components.delete_rows import delete_selected_rows_v2
-from components.botones.button_dur import make_add_hour_button
+from components.botones.button_avai_dur import  make_add_hour_avai_button
 from components.share_data import *
 from collections import Counter
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger(__name__)
 
-@ui.page('/profile_edit')
-def profile_edit():
+@ui.page('/profileA_edit')
+def profileA_edit():
     user = app.storage.user.get("username", "Usuario")
-    create_main_screen()
+    create_admin_screen()
     with ui.column().classes('w-full h-full p-4 md:p-8 gap-6 flex items-center justify-center'):
         ui.label('Editar Perfil').classes('text-h4 mt-4 text-center')
 
@@ -57,31 +57,13 @@ def profile_edit():
                     else:
                         personal_inputs[field] = ui.input(value=value).classes('w-3/4')
 
-        rgh_obj = session.query(SchedulePref).filter(SchedulePref.username == username).first()
+        rgh_obj = session.query(ScheduleProf).filter(ScheduleProf.username == username).first()
         if not rgh_obj:
             ui.label("No se encontraron datos de rango de horarios").classes('text-negative mt-4')
             return
 
         with ui.column().classes('w-full max-w-5xl mx-auto p-4 md:p-8 gap-3'):
 
-            # -----------------------------------
-            # Campo Paquete
-            # -----------------------------------
-            rgh_inputs = {}
-            for field, value in [
-                ('package', getattr(rgh_obj, 'package', ''))
-            ]:
-                with ui.row().classes('w-full gap-2'):
-                    ui.label(f"{field.capitalize()}:").classes('w-1/4')
-                    if field == 'package':
-                        package_selector = ui.select(
-                            options=sorted(pack_of_classes),
-                            value=value
-                        ).classes('w-3/4')
-                        rgh_inputs[field] = package_selector
-                    else:
-                        rgh_inputs[field]= ui.input(value=value).classes('w-3/4')
-        
 
             # 2. Selector de días
             with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4 mx-auto'):
@@ -89,24 +71,17 @@ def profile_edit():
                 ui.separator()
                 day_selector = ui.select(days_of_week, label='Días', multiple=True, value=[]).classes('w-auto min-w-[150px]')
 
-            # 3. Selector de duración
-            with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4 mx-auto'):
-                ui.label('Duración de la clase').classes('text-lg font-bold')
+            # Selector de disponibilidad y horas
+            with ui.card().classes('w-full p-4'):
+                ui.label('Disponibilidad y horas').classes('text-lg font-bold')
                 ui.separator()
-                # Obtener duración más frecuente para este usuario
-                durations_user = [s.duration for s in session.query(SchedulePref).filter(SchedulePref.username == username).all()]
-                default_duration = None
-                if durations_user:
-                    # Calcular el valor más frecuente
-                    
-                    duration_counter = Counter(durations_user)
-                    default_duration = duration_counter.most_common(1)[0][0]
 
-                duration_selector = ui.select(
-                    duration_options, 
-                    label='Duración', 
-                    value=default_duration  # <-- valor por defecto
-                ).classes('w-48')
+                with ui.row().classes('gap-4 mt-2'):
+
+                    avai_selector = ui.select(
+                        availability_options,
+                        label='Disponibilidad'
+                    ).classes('w-48')
 
             # 4. Selector de hora
             with ui.card().classes('w-full max-w-6xl flex-1 overflow-auto p-4 mx-auto'):
@@ -134,7 +109,7 @@ def profile_edit():
                 # -----------------------
                 # Tabla de horarios
                 # -----------------------
-                schedule_data = session.query(SchedulePref).filter(SchedulePref.username == username).all()
+                schedule_data = session.query(ScheduleProf).filter(ScheduleProf.username == username).all()
 
                 if schedule_data:
                     ui.label("Rangos horarios:").classes('text-h5 mt-6')
@@ -204,12 +179,12 @@ def profile_edit():
                         
                         # 1. Borrar horarios anteriores para este usuario
                         # Esta estrategia evita conflictos de IDs y maneja limpiamente las eliminaciones hechas en la UI
-                        session2.query(SchedulePref).filter(SchedulePref.username == username).delete()
+                        session2.query(ScheduleProf).filter(ScheduleProf.username == username).delete()
                         
-                        package_val = rgh_inputs['package'].value
+                        
                         name_val = user_obj.name if user_obj else user
                         surname_val = user_obj.surname if user_obj else ""
-                        duration_val = duration_selector.value
+                       
                         # 2. Set para evitar duplicados 
                         # (Como mostramos el intervalo en Inicio Y Fin en la tabla, aparecerá dos veces al iterar rows)
                         seen_intervals = set()
@@ -234,12 +209,10 @@ def profile_edit():
                                             unique_key = (day, s_int, e_int)
                                             
                                             if unique_key not in seen_intervals:
-                                                new_pref = SchedulePref(
+                                                new_pref = ScheduleProf(
                                                     username=username,
                                                     name= name_val,
                                                     surname= surname_val,
-                                                    duration= duration_val,
-                                                    package=package_val,
                                                     days=day,
                                                     start_time=s_int,
                                                     end_time=e_int
@@ -267,10 +240,10 @@ def profile_edit():
             session.close()
             
 
-    make_add_hour_button(
+    make_add_hour_avai_button(
                     add_hour_btn,
                     day_selector=day_selector,
-                    duration_selector=duration_selector,
+                    availability=avai_selector,
                     button_id=f"rango_horario_de_{user}",
                     time_input=start_time,
                     end_time_input=end_time,
@@ -279,8 +252,8 @@ def profile_edit():
                     days_of_week=days_of_week,
                     table=table,
                     notify_success="Hora agregada",
-                    notify_missing_day="Selecciona al menos un día",
-                    notify_missing_duration="Selecciona duración",
+                    
+                    
                     notify_missing_time="Selecciona hora de inicio",
                     notify_missing_end_time="Selecciona hora de fin",
                     notify_invalid_hour="Hora no válida",

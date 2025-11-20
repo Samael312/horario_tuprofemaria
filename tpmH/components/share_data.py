@@ -17,6 +17,6 @@ group_data2 = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 group_data3 = {}
 group_data4 = {h: {d: "" for d in days_of_week} for h in hours_of_day}
 group_data5 = {h: {d: "" for d in days_of_week} for h in hours_of_day}
-group_data6 = {h: {d: "" for d in days_of_week} for h in hours_of_day}
+group_data6 = {}
 
 

@@ -4,12 +4,12 @@ import logging
 from components.header import create_main_screen
 from components.share_data import *
 from components.clear_table import clear_table
-from components.button_dur import make_add_hour_button
-from components.button_fecha import make_add_hours_by_date_button
+from components.botones.button_dur import make_add_hour_button
+from components.botones.button_fecha import make_add_hours_by_date_button
 from components.h_selection import make_selection_handler
 from components.delete_rows import delete_selected_rows_v2
-from components.save_rgo import create_save_schedule_button
-from components.save_asg import create_save_asgn_classes
+from components.save.save_rgo import create_save_schedule_button
+from components.save.save_asg import create_save_asgn_classes
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -132,16 +132,16 @@ def show_existing_classes(container):
                 package_selector.on('update:modelValue', enable_days)
 
                 # Limitar días según paquete
-                def limit_days(e):
-                    selected_package = package_selector.value
-                    if not selected_package:
-                        return
-                    max_days = max_days_per_plan.get(selected_package, 3)
-                    if len(day_selector.value) > max_days:
-                        ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
-                        day_selector.value = day_selector.value[:max_days]
+                #def limit_days(e):
+                #    selected_package = package_selector.value
+                #    if not selected_package:
+                #        return
+                #    max_days = max_days_per_plan.get(selected_package, 3)
+                #    if len(day_selector.value) > max_days:
+                #        ui.notify(f'Solo puedes seleccionar {max_days} días para {selected_package}', color='warning')
+                #        day_selector.value = day_selector.value[:max_days]
 
-                day_selector.on('update:modelValue', limit_days)
+                #day_selector.on('update:modelValue', limit_days)
 
             # Selector de duración y días para nuevas horas
             with ui.card().classes('w-full max-w-3xl p-4'):

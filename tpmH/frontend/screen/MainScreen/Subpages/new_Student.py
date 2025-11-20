@@ -3,10 +3,10 @@ import logging
 from components.header import create_main_screen
 from components.share_data import *
 from components.clear_table import clear_table
-from components.button_dur import make_add_hour_button
+from components.botones.button_dur import make_add_hour_button
 from components.h_selection import make_selection_handler
 from components.delete_rows import delete_selected_rows_v2
-from components.save_rgo import create_save_schedule_button
+from components.save.save_rgo import create_save_schedule_button
 
 logging.basicConfig(
     level=logging.DEBUG,

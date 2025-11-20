@@ -2,15 +2,13 @@ from components.header import create_main_screen
 from components.share_data import *
 from components.clear_table import clear_table
 from datetime import datetime
-
 from nicegui import ui
-from datetime import datetime
 
 def make_add_hours_by_date_button(
         button,
         *,
         start_time_input,
-        end_time_input,
+        end_time_input,   # Ahora es obligatorio para el cálculo
         availability,
         date_input,
         group_data,
@@ -18,7 +16,7 @@ def make_add_hours_by_date_button(
         button_id=None,
         notify_no_package="Selecciona un paquete primero",
         notify_no_start="Selecciona la hora de inicio",
-        notify_no_end="Selecciona la hora de fin"
+        notify_no_end="Selecciona la hora de fin",
         notify_no_date="Selecciona una fecha",
         notify_bad_format="Formato de hora incorrecto HH:MM",
         notify_success="Horas agregadas"
@@ -32,14 +30,10 @@ def make_add_hours_by_date_button(
     def add_hours_action():
 
         # -------------------------
-        # Validaciones
+        # 1. Validaciones
         # -------------------------
         if not availability.value:
             ui.notify(notify_no_package, color='warning')
-            return
-
-        if not start_time_input.value:
-            ui.notify(notify_no_start, color='warning')
             return
 
         if not start_time_input.value:
@@ -55,69 +49,75 @@ def make_add_hours_by_date_button(
             return
 
         # -------------------------
-        # Parsear hora de inicio
+        # 2. Parsear y Validar formato de Hora Inicio
         # -------------------------
         try:
             h_start, m_start = map(int, start_time_input.value.split(":"))
+            hora_inicio_fmt = f"{h_start:02d}:{m_start:02d}"
         except:
-            ui.notify(notify_bad_format, color="warning")
+            ui.notify(notify_bad_format + " (Inicio)", color="warning")
             return
 
         # -------------------------
-        # Calcular hora final según duración
+        # 3. Parsear y Validar formato de Hora Fin
         # -------------------------
-        dur = duration_selector.value
-
-        if dur == "30 minutos":
-            total_minutes = h_start * 60 + m_start + 30
-        elif dur == "1 hora":
-            total_minutes = h_start * 60 + m_start + 60
-        else:
-            ui.notify("Duración desconocida", color="warning")
+        try:
+            h_end, m_end = map(int, end_time_input.value.split(":"))
+            hora_fin_fmt = f"{h_end:02d}:{m_end:02d}"
+        except:
+            ui.notify(notify_bad_format + " (Fin)", color="warning")
             return
 
-        h_end = total_minutes // 60
-        m_end = total_minutes % 60
-
-        hora_inicio = f"{h_start:02d}:{m_start:02d}"
-        hora_fin = f"{h_end:02d}:{m_end:02d}"
-        intervalo = f"{hora_inicio}-{hora_fin}"  # <-- formato final
+        # Opcional: Validar que la hora fin sea mayor que la de inicio
+        if (h_end * 60 + m_end) <= (h_start * 60 + m_start):
+             ui.notify("La hora de fin debe ser mayor a la de inicio", color="warning")
+             return
 
         # -------------------------
-        # Obtener fecha y día
+        # 4. Crear intervalo y obtener datos de fecha
         # -------------------------
+        intervalo = f"{hora_inicio_fmt}-{hora_fin_fmt}"
+        
         fecha = date_input.value
-        fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
-        dia = dias_es[fecha_dt.strftime('%A')]
+        try:
+            fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
+            dia = dias_es[fecha_dt.strftime('%A')]
+        except:
+            ui.notify("Formato de fecha inválido", color="warning")
+            return
 
+        # Inicializar la estructura si la fecha no existe
         if fecha not in group_data:
             group_data[fecha] = {}
 
         # -------------------------
-        # Guardar intervalo con identificador del botón
+        # 5. Guardar intervalo
         # -------------------------
         group_data[fecha][intervalo] = {
             'fecha': fecha,
             'dia': dia,
-            'hora': intervalo,  # <-- ahora la columna 'hora' muestra inicio-fin
+            'hora': intervalo, 
             'button_id': button_id
         }
 
         # -------------------------
-        # Actualizar tabla
+        # 6. Actualizar tabla
         # -------------------------
         new_rows = []
         for fecha_key, horas in group_data.items():
             for h_lbl, data in horas.items():
                 new_rows.append(data)
 
+        # Ordenar por fecha y luego por hora (cadena)
         new_rows.sort(key=lambda x: (x['fecha'], x['hora']))
         table.rows = new_rows
         table.update()
+        
         ui.notify(notify_success, type='positive')
 
-        # Limpiar input de hora de inicio
+        # Limpiar inputs
         start_time_input.value = ""
+        end_time_input.value = ""
 
     button.on('click', add_hours_action)
     return add_hours_action

@@ -2,7 +2,7 @@ import pandas as pd
 from nicegui import ui, app
 from components.headerAdmin import create_admin_screen
 from db.sqlite_db import SQLiteSession
-from db.models import User, SchedulePref, AsignedClasses
+from db.models import User, ScheduleProf, AsignedClasses
 from components.delete_all import confirm_delete
 
 
@@ -13,7 +13,7 @@ def profileAdmin():
     with ui.row().classes('w-full items-center justify-between mt-4 relative'):
         ui.label('Profile').classes('text-h4 absolute left-1/2 transform -translate-x-1/2')
         with ui.fab(icon='menu', label='Opciones'):
-            ui.fab_action(icon='edit', label='Editar', on_click=lambda: ui.navigate.to('/profile_edit'), color='positive')
+            ui.fab_action(icon='edit', label='Editar', on_click=lambda: ui.navigate.to('/profileA_edit'), color='positive')
             ui.fab_action(icon='delete', label='Eliminar cuenta', on_click=confirm_delete, color='negative')
 
     username = app.storage.user.get("username")
@@ -43,7 +43,7 @@ def profileAdmin():
                 with ui.row().classes('w-full'):
                     ui.label(label_text).classes('text-base md:text-lg')
 
-        rgh_obj = session.query(SchedulePref).filter(SchedulePref.username == username).first()
+        rgh_obj = session.query(AsignedClasses).filter(AsignedClasses.username == username).first()
         if not rgh_obj:
             with ui.column().classes('w-full max-w-5xl mx-auto p-4 md:p-8 gap-3'):
                 ui.label("Aun no tienes horario ni clases").classes('text-negative mt-4')
@@ -58,8 +58,8 @@ def profileAdmin():
             # ========================
             # Rangos horarios como DataFrame
             # ========================
-            schedule_data = session.query(SchedulePref).filter(
-                SchedulePref.username == username
+            schedule_data = session.query(ScheduleProf).filter(
+                ScheduleProf.username == username
             ).all()
 
             if schedule_data:
@@ -69,7 +69,8 @@ def profileAdmin():
                 df_schedule = pd.DataFrame([{
                     'Día': s.days,
                     'Hora Inicio': f"{str(s.start_time).zfill(4)[:2]}:{str(s.start_time).zfill(4)[2:]}",
-                    'Hora Fin': f"{str(s.end_time).zfill(4)[:2]}:{str(s.end_time).zfill(4)[2:]}"
+                    'Hora Fin': f"{str(s.end_time).zfill(4)[:2]}:{str(s.end_time).zfill(4)[2:]}",
+                    'Disponibilidad': s.availability
                 } for s in schedule_data])
 
                 # Mostrar tabla usando ui.table
@@ -89,6 +90,8 @@ def profileAdmin():
                 ui.label("Clases asignadas:").classes('text-h5 mt-6')
 
                 df_assigned = pd.DataFrame([{
+                    'Nombre': a.name,
+                    "Apellido": a.surname,
                     'Fecha': a.date,
                     'Día': a.days,
                     'Hora Inicio': f"{str(a.start_time).zfill(4)[:2]}:{str(a.start_time).zfill(4)[2:]}",

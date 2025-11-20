@@ -46,7 +46,7 @@ def profile():
 
         rgh_obj = session.query(SchedulePref).filter(SchedulePref.username == username).first()
         if not rgh_obj:
-            ui.label("Usuario no encontrado en DB").classes('text-negative mt-4')
+            ui.label("No se encontraron datos de rango de horarios").classes('text-negative mt-4')
             return
 
         with ui.column().classes('w-full max-w-5xl mx-auto p-4 md:p-8 gap-3'):

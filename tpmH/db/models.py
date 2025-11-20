@@ -53,3 +53,15 @@ class ScheduleProf(Base):
     start_time = Column(Integer, unique=False)
     end_time = Column(Integer, unique=False)
     availability= Column(String, unique=False, default='Available')
+
+class ScheduleProfEsp(Base):
+    __tablename__ = "horario_prof_esp"
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=False)
+    name = Column(String, unique=False)
+    surname = Column(String, unique=False)
+    date = Column(String, unique=False)
+    days = Column(String, unique=False)
+    start_time = Column(Integer, unique=False)
+    end_time = Column(Integer, unique=False)
+    avai= Column(String, unique=False, default='Available')

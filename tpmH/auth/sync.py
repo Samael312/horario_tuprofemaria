@@ -1,6 +1,6 @@
 from db.sqlite_db import SQLiteSession
 from db.postgres_db import PostgresSession
-from db.models import User, SchedulePref, AsignedClasses
+from db.models import User, SchedulePref, AsignedClasses, ScheduleProf, ScheduleProfEsp
 from nicegui import ui
 import logging
 
@@ -14,6 +14,8 @@ def sync_sqlite_to_postgres():
         total_users = 0
         total_rangos = 0
         total_clases = 0
+        total_hgen = 0
+        total_hesp = 0
 
         # -----------------------------
         # SYNC USERS
@@ -80,6 +82,53 @@ def sync_sqlite_to_postgres():
                     package=c.package
                 ))
                 total_clases += 1
+        
+        # -----------------------------
+        # SYNC HORARIO_PROF
+        # -----------------------------
+        sqlite_clases = sqlite_sess.query(ScheduleProf).all()
+        for d in sqlite_clases:
+            exists = pg_sess.query(ScheduleProf).filter_by(
+                username=d.username,
+                start_time=d.start_time,
+                end_time=d.end_time
+            ).first()
+
+            if not exists:
+                pg_sess.add(ScheduleProf(
+                    username=d.username,
+                    name=d.name,
+                    surname=d.surname,
+                    days=d.days,
+                    start_time=d.start_time,
+                    end_time=d.end_time,
+                    availability=d.availability
+                ))
+                total_hgen += 1
+        
+         # -----------------------------
+        # SYNC HORARIO_PROF
+        # -----------------------------
+        sqlite_clases = sqlite_sess.query(ScheduleProfEsp).all()
+        for g in sqlite_clases:
+            exists = pg_sess.query(ScheduleProfEsp).filter_by(
+                username=g.username,
+                start_time=g.start_time,
+                end_time=g.end_time
+            ).first()
+
+            if not exists:
+                pg_sess.add(ScheduleProfEsp(
+                    username=g.username,
+                    name=g.name,
+                    surname=g.surname,
+                    date= g.date,
+                    days=g.days,
+                    start_time=g.start_time,
+                    end_time=g.end_time,
+                    avai=g.avai
+                ))
+                total_hesp += 1
 
         # COMMIT FINAL
         pg_sess.commit()
@@ -91,7 +140,9 @@ def sync_sqlite_to_postgres():
             f"Sincronización completa:\n"
             f"• {total_users} usuarios\n"
             f"• {total_rangos} rangos horarios\n"
-            f"• {total_clases} clases asignadas"
+            f"• {total_clases} clases asignadas\n"
+            f"• {total_hesp} horarios especificos\n"
+            f"• {total_hgen} horarios generales"
         )
         ui.notify(msg, type="positive")
         logger.info(msg)

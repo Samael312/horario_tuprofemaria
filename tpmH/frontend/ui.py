@@ -15,7 +15,8 @@ from frontend.screen.MainScreen.Mainpages.schedule import scheduleMaker
 from frontend.screen.MainScreen.Subpages.editProfile import profile_edit
 from frontend.screen.MainAdminScreen.Mainpages.students_admin import students
 from frontend.screen.MainAdminScreen.Mainpages.Adm_horario import adm_horario
-from frontend.screen.MainAdminScreen.Mainpages.Subpages import edit_student
+from frontend.screen.MainAdminScreen.Subpages.edit_student import students_edit
+from frontend.screen.MainAdminScreen.Subpages.editAdminProfile import profileA_edit
 
 
 
@@ -50,4 +51,5 @@ def init_ui():
         profileAdmin()
         students()
         adm_horario()
-        edit_student()
+        students_edit()
+        profileA_edit()
