@@ -1,5 +1,4 @@
-﻿# main.py
-import logging
+﻿import logging
 from nicegui import ui
 from frontend.ui import init_ui
 
@@ -26,9 +25,13 @@ def main():
 
 if __name__ in {'__main__', '__mp_main__'}:
     main()
-    ui.add_head_html('''
-    <link rel="icon" type="image/png" href="/components/icon/logo.png">
-''')
-    ui.run(title="Tuprofemaria: Tu clase, tu ritmo, tu ingles", 
-           reload=True, 
-           storage_secret='maria_2025_horarios_secret_key_!@#987')
+    
+    # Iniciar servidor
+    # MOVIMOS EL FAVICON AQUÍ: Usamos el parámetro nativo 'favicon'
+    # Nota: Asegúrate de que la ruta al archivo sea correcta relativa a main.py
+    ui.run(
+        title="Tuprofemaria: Tu clase, tu ritmo, tu ingles", 
+        reload=True, 
+        storage_secret='maria_2025_horarios_secret_key_!@#987',
+        favicon='./components/icon/logo.png' 
+    )
