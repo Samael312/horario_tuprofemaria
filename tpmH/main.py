@@ -1,9 +1,20 @@
 ﻿import logging
+import os
 from nicegui import ui
+
+# =====================================================
+# PRE-CONFIGURACIÓN (FIX RENDER)
+# =====================================================
+# Asegurar que el directorio 'db' existe antes de importar módulos que lo usan
+current_dir = os.path.dirname(os.path.abspath(__file__))
+db_dir = os.path.join(current_dir, 'db')
+os.makedirs(db_dir, exist_ok=True)
+
+# Ahora sí importamos la UI (que a su vez importa la DB)
 from frontend.ui import init_ui
 
 # =====================================================
-# CONFIGURACIÓN
+# LOGGING
 # =====================================================
 
 logging.basicConfig(
@@ -27,8 +38,6 @@ if __name__ in {'__main__', '__mp_main__'}:
     main()
     
     # Iniciar servidor
-    # MOVIMOS EL FAVICON AQUÍ: Usamos el parámetro nativo 'favicon'
-    # Nota: Asegúrate de que la ruta al archivo sea correcta relativa a main.py
     ui.run(
         title="Tuprofemaria: Tu clase, tu ritmo, tu ingles", 
         reload=True, 
