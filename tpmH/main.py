@@ -26,6 +26,6 @@ def main():
 
 if __name__ in {'__main__', '__mp_main__'}:
     main()
-    ui.run(title="Tuprofemaria: Creador de Horarios", 
+    ui.run(title="Tuprofemaria: Tu clase, tu ritmo, tu ingles", 
            reload=True, 
            storage_secret='maria_2025_horarios_secret_key_!@#987')

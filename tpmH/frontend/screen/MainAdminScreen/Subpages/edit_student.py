@@ -5,7 +5,6 @@ from db.sqlite_db import SQLiteSession
 from db.models import User
 from auth.sync_edit import sync_sqlite_to_postgres_edit
 from components.h_selection import make_selection_handler
-from components.clear_table import clear_table
 from components.delete_rows import delete_selected_rows_v2
 from components.share_data import pack_of_classes
 
@@ -14,208 +13,214 @@ logger = logging.getLogger(__name__)
 
 @ui.page('/students_edit')
 def students_edit():
+    # 1. Header y Autenticación
     create_admin_screen()
     
-    # Verificar sesión
     username_sess = app.storage.user.get("username")
     if not username_sess:
-        ui.label("No hay usuario en sesión").classes('text-negative mt-4')
+        ui.navigate.to('/login')
         return
 
-    # --- Función para actualizar SOLO la memoria local (Python) ---
+    # --- Lógica Local ---
     def update_local_row(row_data):
-        """
-        Cuando el usuario cambia un dropdown, actualizamos table.rows en Python
-        para que cuando pulse 'Guardar', se envíen los datos nuevos.
-        """
+        """Actualiza la memoria de la tabla sin tocar la DB todavía."""
         for row in table.rows:
             if row['Usuario'] == row_data['Usuario']:
-                row.update(row_data) # Actualiza Role, Package o Status en memoria
+                row.update(row_data)
                 break
-        # ui.notify(f"Dato actualizado en memoria: {row_data}", type='info') # Debug opcional
 
-    with ui.row().classes('w-full items-center justify-center'):
-        ui.label('Editar Lista de Estudiantes').classes('text-h4 mt-4 text-center')
-
-    with ui.column().classes('w-full max-w-5xl mx-auto p-4 md:p-8 gap-3'):
-        session = SQLiteSession()
-        try:
-            # 1. Obtener datos iniciales
-            student_data = session.query(User).filter(User.role != 'admin').all()
-
-            rows = [{
-                'Usuario': s.username,
-                'Name': s.name,
-                'Surname': s.surname,
-                'Role': getattr(s, 'role', 'client'),
-                'Package': getattr(s, 'package', 'None'),
-                'Status': getattr(s, 'status', 'Active')
-            } for s in student_data]
-
-            cols = [
-                {'name': 'Usuario', 'label': 'Usuario', 'field': 'Usuario', 'align': 'left', 'sortable': True},
-                {'name': 'Name', 'label': 'Nombre', 'field': 'Name', 'align': 'left', 'sortable': True},
-                {'name': 'Surname', 'label': 'Apellido', 'field': 'Surname', 'align': 'left', 'sortable': True},
-                {'name': 'Role', 'label': 'Role', 'field': 'Role', 'align': 'left'},
-                {'name': 'Package', 'label': 'Package', 'field': 'Package', 'align': 'left'},
-                {'name': 'Status', 'label': 'Status', 'field': 'Status', 'align': 'left'},
-            ]
-
-            # 2. Crear Tabla
-            table = ui.table(
-                columns=cols,
-                rows=rows,
-                row_key='Usuario',
-                selection='multiple',
-                pagination=10
-            ).classes('w-full').props('dense bordered flat')
-
-            # --- SLOTS ---
+    # --- UI PRINCIPAL ---
+    with ui.column().classes('w-full max-w-7xl mx-auto p-4 md:p-8 gap-6'):
+        
+        # 2. Encabezado de Página
+        with ui.row().classes('w-full items-center justify-between mb-2'):
+            with ui.row().classes('items-center gap-2'):
+                ui.icon('edit_note', size='lg', color='blue-600')
+                with ui.column().classes('gap-0'):
+                    ui.label('Editor Masivo de Estudiantes').classes('text-3xl font-bold text-gray-800')
+                    ui.label('Modifica roles, paquetes y estados rápidamente').classes('text-sm text-gray-500')
             
-            # SLOT 1: ROLE
-            table.add_slot('body-cell-Role', '''
-                <q-td :props="props">
-                    <q-select
-                        v-model="props.row.Role"
-                        :options="['admin', 'client']"
-                        dense filled outlined emit-value map-options
-                        @update:model-value="$parent.$emit('row-change', props.row)"
-                        popup-content-class="bg-white text-black"
-                    >
-                        <template v-slot:selected-item="scope">
-                            <q-chip dense :color="props.row.Role === 'admin' ? 'red-5' : 'blue-5'" text-color="white" icon="manage_accounts">
-                                {{ props.row.Role }}
-                            </q-chip>
-                        </template>
-                    </q-select>
-                </q-td>
-            ''')
+            # Botón Cancelar/Volver
+            ui.button('Volver a Lista', on_click=lambda: ui.navigate.to('/Students')) \
+                .props('flat color=grey-7 icon=arrow_back')
+
+        # 3. Tarjeta de Edición
+        with ui.card().classes('w-full shadow-lg rounded-xl overflow-hidden border border-gray-200 p-0'):
             
-            # SLOT 2: PACKAGE
-            # Usamos f-string y {{ }} dobles para pasar la variable Python a Vue
-            table.add_slot('body-cell-Package', f'''
-                <q-td :props="props">
-                    <q-select
-                        v-model="props.row.Package"
-                        :options="{pack_of_classes}" 
-                        dense filled outlined emit-value map-options
-                        @update:model-value="$parent.$emit('row-change', props.row)"
-                    >
-                        <template v-slot:selected-item="scope">
-                            <div style="display:flex; align-items:center; gap:5px;">
-                                <q-icon name="inventory_2" color="purple" v-if="props.row.Package !== 'None'" />
-                                <span>{{{{ props.row.Package }}}}</span>
-                            </div>
-                        </template>
-                    </q-select>
-                </q-td>
-            ''')
+            # Barra de Herramientas de Tabla
+            with ui.row().classes('w-full bg-blue-50 p-4 border-b border-blue-100 items-center justify-between'):
+                ui.label('Tabla de Edición').classes('text-lg font-bold text-blue-900')
+                
+                # Acciones de Tabla
+                with ui.row().classes('gap-2'):
+                     ui.button('Borrar Seleccionados', 
+                            icon='delete', 
+                            color='negative', 
+                            on_click=lambda: delete_selected_rows_v2(table, selection_state, id_column="Usuario")
+                        ).props('flat dense')
 
-            # SLOT 3: STATUS
-            table.add_slot('body-cell-Status', '''
-                <q-td :props="props">
-                    <q-select
-                        v-model="props.row.Status"
-                        :options="['Active', 'Inactive']"
-                        dense filled outlined emit-value map-options
-                        @update:model-value="$parent.$emit('row-change', props.row)"
-                    >
-                        <template v-slot:selected-item="scope">
-                            <div style="display:flex; align-items:center; gap:6px;">
-                                <div :style="{
-                                    width: '10px', height: '10px', borderRadius: '50%',
-                                    backgroundColor: props.row.Status === 'Active' ? '#21BA45' : '#C10015'
-                                }"></div>
-                                <span>{{ props.row.Status }}</span>
-                            </div>
-                        </template>
-                    </q-select>
-                </q-td>
-            ''')
+            session = SQLiteSession()
+            try:
+                # Cargar Datos
+                student_data = session.query(User).filter(User.role != 'admin').all()
 
-            # --- HANDLERS ---
-            # Unificamos todos los cambios visuales en un solo evento 'row-change'
-            # Esto actualiza la variable 'table.rows' de Python sin tocar la DB aún
-            table.on('row-change', lambda e: update_local_row(e.args))
+                rows = [{
+                    'Usuario': s.username,
+                    'Name': s.name,
+                    'Surname': s.surname,
+                    'Role': getattr(s, 'role', 'client'),
+                    'Package': getattr(s, 'package', 'None'),
+                    'Status': getattr(s, 'status', 'Active')
+                } for s in student_data]
 
-            # Manejo de selección
-            selection_handler, selection_state = make_selection_handler(table, logger=logger)
-            table.on('selection', selection_handler)
+                # Definir Columnas
+                cols = [
+                    {'name': 'Usuario', 'label': 'USUARIO', 'field': 'Usuario', 'align': 'left', 'sortable': True, 'headerClasses': 'bg-gray-100 font-bold'},
+                    {'name': 'Name', 'label': 'NOMBRE', 'field': 'Name', 'align': 'left', 'sortable': True, 'headerClasses': 'bg-gray-100 font-bold'},
+                    {'name': 'Surname', 'label': 'APELLIDO', 'field': 'Surname', 'align': 'left', 'sortable': True, 'headerClasses': 'bg-gray-100 font-bold'},
+                    {'name': 'Role', 'label': 'ROL (EDIT)', 'field': 'Role', 'align': 'left', 'headerClasses': 'bg-blue-100 text-blue-900 font-bold'},
+                    {'name': 'Package', 'label': 'PAQUETE (EDIT)', 'field': 'Package', 'align': 'left', 'headerClasses': 'bg-blue-100 text-blue-900 font-bold'},
+                    {'name': 'Status', 'label': 'ESTADO (EDIT)', 'field': 'Status', 'align': 'left', 'headerClasses': 'bg-blue-100 text-blue-900 font-bold'},
+                ]
 
-            # Botones auxiliares
-            with ui.row().classes('gap-4 mt-2'):
-                ui.button('Limpiar Tabla', 
-                        on_click=lambda: table.set_rows([]), 
-                        color='yellow').classes('mt-2 text-black')
+                # Renderizar Tabla
+                table = ui.table(
+                    columns=cols,
+                    rows=rows,
+                    row_key='Usuario',
+                    selection='multiple',
+                    pagination={'rowsPerPage': 10}
+                ).classes('w-full').props('flat bordered separator=cell')
 
-                ui.button('Eliminar filas seleccionadas',
-                        color='negative',
-                        on_click=lambda: delete_selected_rows_v2(table, selection_state, id_column="Usuario")
-                        ).classes('mt-2')
+                # --- VUE SLOTS (Personalización Visual de Celdas) ---
+                
+                # Slot Rol: Chip Rojo/Azul
+                table.add_slot('body-cell-Role', '''
+                    <q-td :props="props">
+                        <q-select
+                            v-model="props.row.Role"
+                            :options="['admin', 'client']"
+                            dense borderless emit-value map-options
+                            @update:model-value="$parent.$emit('row-change', props.row)"
+                        >
+                            <template v-slot:selected-item="scope">
+                                <q-chip dense :color="props.row.Role === 'admin' ? 'red-1' : 'blue-1'" 
+                                        :text-color="props.row.Role === 'admin' ? 'red-9' : 'blue-9'" 
+                                        :icon="props.row.Role === 'admin' ? 'security' : 'person'">
+                                    {{ props.row.Role.toUpperCase() }}
+                                </q-chip>
+                            </template>
+                        </q-select>
+                    </q-td>
+                ''')
+                
+                # Slot Paquete: Icono de caja
+                # Pasamos pack_of_classes a JS usando f-string
+                table.add_slot('body-cell-Package', f'''
+                    <q-td :props="props">
+                        <q-select
+                            v-model="props.row.Package"
+                            :options="{pack_of_classes}" 
+                            dense borderless emit-value map-options
+                            @update:model-value="$parent.$emit('row-change', props.row)"
+                        >
+                             <template v-slot:selected-item="scope">
+                                <div class="row items-center q-gutter-x-sm">
+                                    <q-icon name="inventory_2" size="xs" color="purple" />
+                                    <span class="text-weight-medium">{{{{ props.row.Package }}}}</span>
+                                </div>
+                            </template>
+                        </q-select>
+                    </q-td>
+                ''')
 
-            # ------------------------------------------------------------
-            # LOGICA DE GUARDADO (Corregida)
-            # ------------------------------------------------------------
-            def save_changes():
-                session_save = SQLiteSession()
-                try:
-                    logger.info("Iniciando guardado masivo...")
-                    
-                    # 1. Obtenemos las filas ACTUALIZADAS desde Python (gracias a update_local_row)
-                    current_rows = table.rows
-                    current_usernames = [row['Usuario'] for row in current_rows if row.get('Usuario')]
+                # Slot Status: Punto Verde/Rojo
+                table.add_slot('body-cell-Status', '''
+                    <q-td :props="props">
+                        <q-select
+                            v-model="props.row.Status"
+                            :options="['Active', 'Inactive']"
+                            dense borderless emit-value map-options
+                            @update:model-value="$parent.$emit('row-change', props.row)"
+                        >
+                            <template v-slot:selected-item="scope">
+                                <div class="row items-center q-gutter-x-sm">
+                                    <div :style="{
+                                        width: '8px', height: '8px', borderRadius: '50%',
+                                        backgroundColor: props.row.Status === 'Active' ? '#21BA45' : '#C10015'
+                                    }"></div>
+                                    <span :class="props.row.Status === 'Active' ? 'text-green-9' : 'text-red-9'">
+                                        {{ props.row.Status }}
+                                    </span>
+                                </div>
+                            </template>
+                        </q-select>
+                    </q-td>
+                ''')
 
-                    # 2. ELIMINAR usuarios que ya no están en la tabla
-                    users_to_delete = session_save.query(User).filter(
-                        User.username.notin_(current_usernames),
-                        User.role != 'superuser', 
-                        User.role != 'admin' 
-                    ).all()
+                # Handlers
+                table.on('row-change', lambda e: update_local_row(e.args))
+                selection_handler, selection_state = make_selection_handler(table, logger=logger)
+                table.on('selection', selection_handler)
 
-                    for u in users_to_delete:
-                        session_save.delete(u)
-
-                    # 3. ACTUALIZAR O CREAR (Upsert)
-                    for row in current_rows:
-                        u_name = row.get('Usuario')
-                        if not u_name: continue
-
-                        user_db = session_save.query(User).filter(User.username == u_name).first()
-
-                        if not user_db:
-                            user_db = User(username=u_name)
-                            session_save.add(user_db)
+                # --- LÓGICA DE GUARDADO ---
+                def save_changes():
+                    session_save = SQLiteSession()
+                    try:
+                        ui.notify("Guardando cambios...", type='ongoing', timeout=1000)
                         
-                        # Aquí asignamos los valores que vinieron de la tabla (actualizados por update_local_row)
-                        user_db.name = row.get('Name', '')
-                        user_db.surname = row.get('Surname', '')
-                        user_db.role = row.get('Role', 'client')
-                        user_db.package = row.get('Package', 'None')
-                        # user_db.status = row.get('Status', 'Active')
+                        current_rows = table.rows
+                        current_usernames = [row['Usuario'] for row in current_rows if row.get('Usuario')]
 
-                    session_save.commit()
-                    
-                    
-                    sync_sqlite_to_postgres_edit()
-                    
+                        # 1. Borrar eliminados
+                        users_to_delete = session_save.query(User).filter(
+                            User.username.notin_(current_usernames),
+                            User.role != 'admin' # Protección extra para admins
+                        ).all()
+                        
+                        for u in users_to_delete:
+                            session_save.delete(u)
 
-                    ui.notify("Base de datos actualizada correctamente.", color='positive')
-                    
-                    # --- CORRECCIÓN DE NAVEGACIÓN ---
-                    # Ahora está dentro del TRY, justo después del éxito
-                    ui.timer(1.0, lambda: ui.navigate.to('/Students'))
+                        # 2. Actualizar/Crear
+                        for row in current_rows:
+                            u_name = row.get('Usuario')
+                            if not u_name: continue
 
-                except Exception as e:
-                    session_save.rollback()
-                    logger.error(f"Error en save_changes: {e}", exc_info=True)
-                    ui.notify(f"Error al guardar: {str(e)}", color='negative')
-                finally:
-                    session_save.close()
+                            user_db = session_save.query(User).filter(User.username == u_name).first()
+                            if not user_db:
+                                user_db = User(username=u_name)
+                                session_save.add(user_db)
+                            
+                            user_db.name = row.get('Name', '')
+                            user_db.surname = row.get('Surname', '')
+                            user_db.role = row.get('Role', 'client')
+                            user_db.package = row.get('Package', 'None')
+                            # user_db.status = row.get('Status', 'Active')
 
-            with ui.column().classes('w-full items-center mt-6'):
-                ui.button("Guardar Cambios", on_click=save_changes, color='positive').classes('w-64')
+                        session_save.commit()
+                        
+                        # Sincronización
+                        try:
+                            sync_sqlite_to_postgres_edit()
+                        except Exception as e:
+                            logger.error(f"Error sync: {e}")
 
-        except Exception as e:
-            ui.label(f"Error cargando página: {e}")
-        finally:
-            session.close()
+                        ui.notify("Base de datos actualizada correctamente.", type='positive', icon='cloud_done')
+                        ui.timer(1.0, lambda: ui.navigate.to('/Students'))
+
+                    except Exception as e:
+                        session_save.rollback()
+                        ui.notify(f"Error crítico: {str(e)}", type='negative')
+                    finally:
+                        session_save.close()
+
+                # Footer de Tarjeta con Botón Guardar
+                with ui.row().classes('w-full bg-gray-50 p-4 border-t border-gray-200 justify-end'):
+                     ui.button("Guardar Todos los Cambios", on_click=save_changes, icon='save') \
+                        .props('push color=positive') \
+                        .classes('px-6')
+
+            except Exception as e:
+                ui.label(f"Error al cargar datos: {e}").classes('text-red-500')
+            finally:
+                session.close()
