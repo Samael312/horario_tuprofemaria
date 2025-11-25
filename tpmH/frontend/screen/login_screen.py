@@ -110,7 +110,7 @@ def setup_auth_system():
                         ui.navigate.to(target)
                     else:
                         ui.notify("Usuario o contraseña incorrectos", type='negative', icon='error')
-                        # Efecto visual de error (sacudir input - opcional, requiere JS avanzado, aquí solo notificamos)
+                        
                 except Exception as e:
                     ui.notify(f"Error de conexión: {str(e)}", type='negative')
                 finally:

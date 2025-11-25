@@ -8,7 +8,6 @@ from zoneinfo import available_timezones
 from components.h_selection import make_selection_handler
 from components.clear_table import clear_table
 from components.delete_rows import delete_selected_rows_v2
-# Importamos los componentes corregidos (Asegúrate de que los archivos .py estén actualizados)
 from components.botones.button_avai_dur_edit import make_add_hour_avai_button
 from components.botones.button_avai_esp_dur_edit import make_add_hours_by_date_button
 from components.share_data import *

@@ -33,7 +33,6 @@ def profile_edit():
             return
         
         # Inicializar estructura de datos para la tabla (Importante reiniciarla al cargar la página)
-        # Asumiendo que hours_of_day y days_of_week vienen de components.share_data
         local_group_data = {h: {d: "" for d in days_of_week} for h in hours_of_day}
 
         # --- CONTENEDOR PRINCIPAL ---

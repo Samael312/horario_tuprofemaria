@@ -149,7 +149,7 @@ def create_signup_screen():
                 time_zone = ui.select(
                     options=all_timezones, 
                     label='Zona Horaria',
-                    value='UTC' # Valor por defecto seguro, ajustar según necesidad
+                    value='UTC' 
                 ).classes('w-full').props('outlined dense use-input input-debounce="0" behavior="menu"')
                 time_zone.add_slot('prepend', '<q-icon name="schedule" />')
 

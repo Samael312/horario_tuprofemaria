@@ -20,11 +20,11 @@ def students():
 
     session = SQLiteSession()
     try:
-        # Obtenemos lista de usuarios (Excluyendo al super admin si fuera necesario, aqui filtramos por rol)
+        # Obtenemos lista de usuarios 
         # Traemos todos para poder mostrar métricas
         all_users = session.query(User).all()
         
-        # Filtramos la lista principal para la tabla (excluyendo admins si quieres solo estudiantes)
+        # Filtramos la lista principal para la tabla 
         # O mostramos todos. En este caso mostramos todos menos el admin actual para evitar auto-edición
         lista_estudiantes = [u for u in all_users if u.username != username] 
 
@@ -83,7 +83,6 @@ def students():
                         'Email': getattr(s, 'email', 'N/A') or 'N/A', # Manejo seguro de None
                         'Role': s.role.upper() if s.role else 'CLIENT',
                         'Zona': getattr(s, 'time_zone', '-') or '-',
-                        # Campos simulados (Status/Package) si no existen en DB
                         'Package': getattr(s, 'package', 'Standard'), 
                         'Status': 'ACTIVO' 
                     } for s in lista_estudiantes]

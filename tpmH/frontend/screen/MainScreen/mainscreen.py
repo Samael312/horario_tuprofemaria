@@ -18,7 +18,7 @@ def mainscreen():
             ui.label(f'¡Hola {username}!').classes('text-4xl md:text-5xl font-black text-gray-800 tracking-tight')
             ui.label('¿Qué te gustaría hacer hoy?').classes('text-lg text-gray-500 mt-2 font-medium')
 
-        # 2. Contenedor de Tarjetas (Responsive: Columna en móvil, Fila en PC)
+        # 2. Contenedor de Tarjetas 
         with ui.row().classes('w-full max-w-4xl justify-center gap-6 md:gap-10'):
 
             # ==========================================

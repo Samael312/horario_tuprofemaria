@@ -23,7 +23,7 @@ from frontend.screen.MainAdminScreen.Subpages.editAdminProfile import profileA_e
 def init_ui():
     """Puente entre las pantallas de la app."""
     
-    setup_auth_system()  # agrega login + middleware
+    setup_auth_system() 
 
     # Página principal (solo accesible si el usuario está autenticado)
     @ui.page('/')

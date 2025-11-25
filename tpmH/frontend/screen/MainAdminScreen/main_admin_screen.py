@@ -35,7 +35,7 @@ def main_admin_screen():
                 # Textos
                 ui.label('Gestión de Estudiantes').classes('text-xl font-bold text-gray-800 mb-2')
                 ui.label('Ver y administrar la lista de estudiantes registrados.').classes('text-sm text-gray-500 mb-6 leading-relaxed')
-                # Botón Simulado (para UX)
+                
                 ui.button('Ver Estudiantes', icon='arrow_forward', on_click=lambda: ui.navigate.to('/Students')) \
                     .props('rounded outline color=green').classes('w-full hover:bg-green-50')
 
@@ -49,7 +49,7 @@ def main_admin_screen():
                 # Textos
                 ui.label('Mis Clases').classes('text-xl font-bold text-gray-800 mb-2')
                 ui.label('Ver y administrar las clases asignadas a los estudiantes.').classes('text-sm text-gray-500 mb-6 leading-relaxed')
-                # Botón Simulado (para UX)
+                
                 ui.button('Ver Mis Clases', icon='arrow_forward', on_click=lambda: ui.navigate.to('/myclassesAdmin'))\
                     .props('rounded outline color=purple').classes('w-full hover:bg-purple-50')   
                 
