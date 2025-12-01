@@ -158,7 +158,7 @@ def new_student():
             notify_interval_invalid="Intervalo inválido"
         )
 
-        # Conectar lógica del botón guardar
+        # Conectar lógica del botón guardar (IMPORTANTE: Esto ahora llama a la lógica de Neon)
         create_save_schedule_button(
             button=save_button,
             table=table3,

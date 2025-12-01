@@ -6,9 +6,13 @@ from components.clear_table import clear_table
 from components.botones.button_avai_dur import make_add_hour_avai_button
 from components.h_selection import make_selection_handler
 from components.delete_rows import delete_selected_rows_v2
-from components.save.save_admin_esp import create_save_asgn_classes_admin
-from components.save.save_admin_rgo import create_save_schedule_admin_button
 from components.botones.button_avai_esp_dur import make_add_hours_by_date_button
+
+# --- IMPORTACIONES ACTUALIZADAS ---
+# Aseguramos que apunten a los archivos "Neon First" que creamos
+from components.save.save_admin_esp import create_save_asgn_classes_admin # Antes save_admin_esp
+from components.save.save_admin_rgo import create_save_schedule_admin_button
+# ----------------------------------
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -36,7 +40,7 @@ def adm_horario():
                 ui.label('Gestión de Disponibilidad').classes('text-3xl font-bold text-gray-800')
                 ui.label('Configura tus horarios generales o fechas específicas').classes('text-sm text-gray-500')
 
-        # 3. Contenedor de Pestañas (Reemplaza al Radio Button)
+        # 3. Contenedor de Pestañas
         with ui.card().classes('w-full shadow-lg rounded-xl overflow-hidden border border-gray-200 p-0'):
             
             with ui.tabs().classes('w-full text-gray-600 bg-gray-50 border-b border-gray-200') \
@@ -46,7 +50,7 @@ def adm_horario():
 
             with ui.tab_panels(tabs, value=t_general).classes('w-full p-6'):
                 
-                #Panel General
+                # Panel General
                 with ui.tab_panel(t_general):
                     show_general_content(username_sess)
                 
@@ -157,6 +161,7 @@ def show_general_content(user):
             notify_interval_invalid="Intervalo inválido"
         )
         
+        # Este botón ahora usa la lógica NEON -> SQLITE
         create_save_schedule_admin_button(
             button=save_button,
             table=table5,
@@ -259,6 +264,7 @@ def show_specific_content(user):
             notify_success="Fecha añadida"
         )
 
+        # Este botón ahora usa la lógica NEON -> SQLITE
         create_save_asgn_classes_admin(
             button=save_button,
             user=user,

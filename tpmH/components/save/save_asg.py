@@ -1,127 +1,225 @@
-from db.sqlite_db import SQLiteSession
-from db.models import SchedulePref, AsignedClasses, User
 from nicegui import ui, app
-from auth.sync import sync_sqlite_to_postgres
 import logging
+# --- IMPORTS ARQUITECTURA HÍBRIDA ---
+from db.postgres_db import PostgresSession  # Fuente de la verdad
+from db.sqlite_db import BackupSession       # Respaldo
+from db.models import SchedulePref, AsignedClasses, User
+# ------------------------------------
 
 logger = logging.getLogger(__name__)
 
 def create_save_asgn_classes(button, user, table_clases, table_rangos, duration_selector, days_of_week, package_selector):
+    """
+    Guarda Clases Asignadas (y opcionalmente Rangos Horarios) siguiendo el flujo:
+    1. Neon (Postgres) -> Principal
+    2. SQLite -> Respaldo
+    """
 
-    def save_tables_to_db():
-        session = SQLiteSession()
-        try:
-            # ============================
-            #   OBTENER NOMBRE Y APELLIDO
-            # ============================
-            user_obj = session.query(User).filter_by(username=user).first()
-            user_obj.package = package_selector.value or ""
-            name_val = user_obj.name if user_obj else user
-            surname_val = user_obj.surname if user_obj else ""
+    async def save_tables_to_db():
+        username = app.storage.user.get("username")
 
-            # ======================================================
-            #   TABLA 1: CLASES ASIGNADAS (MODELO: AsignedClasses)
-            # ======================================================
-            intervalos_guardados = set()     # evitar duplicados
+        if not username:
+            ui.notify("No hay usuario en sesión", type="negative")
+            return
 
+        # 1. Recolectar Datos de la UI (Antes de abrir DB)
+        package_val = package_selector.value or ""
+        duration_val = duration_selector.value
+        
+        # --- PREPARAR DATOS: CLASES ASIGNADAS ---
+        clases_data = []
+        intervalos_clases = set()
+        
+        if table_clases:
             for row in table_clases.rows:
-
                 hora_val = row.get("hora", "")
-                if not hora_val:
-                    continue
+                if not hora_val: continue
 
                 if "-" in hora_val:
                     start_str, end_str = hora_val.split("-")
                 else:
                     start_str = end_str = hora_val
 
-                # Convertir a enteros sin ":"  → "06:30" → 630
-                start_time = int(start_str.replace(":", ""))
-                end_time   = int(end_str.replace(":", ""))
+                try:
+                    start_time = int(start_str.replace(":", ""))
+                    end_time = int(end_str.replace(":", ""))
+                except ValueError: continue
 
                 dia = row.get("dia", "")
-                dur = row.get("duration", duration_selector.value)
+                # Usamos la duración de la fila si existe, si no la del selector global
+                dur = row.get("duration", duration_val)
                 fecha = row.get("fecha", "")
-                paquete = package_selector.value or ""
 
-                key = (dia, start_time, end_time, paquete)
-                if key in intervalos_guardados:
+                # Evitar duplicados exactos en la misma lista de guardado
+                key = (dia, start_time, end_time, package_val, fecha)
+                if key in intervalos_clases:
                     continue
+                intervalos_clases.add(key)
 
-                intervalos_guardados.add(key)
+                clases_data.append({
+                    'username': username,
+                    'duration': dur,
+                    'date': fecha,
+                    'days': dia,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'package': package_val
+                })
 
-                session.add(AsignedClasses(
-                    username=user,
-                    name=name_val,
-                    surname=surname_val,
-                    duration=dur,
-                    date=fecha,
-                    days=dia,
-                    start_time=start_time,
-                    end_time=end_time,
-                    package=paquete
-                ))
-
-            # =====================================================
-            #   TABLA 2: RANGOS HORARIOS (MODELO: SchedulePref)
-            # =====================================================
-            # === TABLA 2: RANGOS HORARIOS ===
-            rangos_guardados = set()    # Para impedir duplicados de DÍA
-
+        # --- PREPARAR DATOS: RANGOS HORARIOS (Si aplica) ---
+        rangos_data = []
+        dias_guardados_rango = set()
+        
+        if table_rangos:
             for row in table_rangos.rows:
-
                 start_time_str = row.get("hora", "")
-                if not start_time_str:
-                    continue
-
-                start_time = int(start_time_str.replace(":", ""))
+                if not start_time_str: continue
+                
+                try:
+                    start_time = int(start_time_str.replace(":", ""))
+                except ValueError: continue
 
                 for day in days_of_week:
-
                     interval = row.get(day, "")
-                    if not interval:
-                        continue
+                    if not interval: continue
 
                     if "-" in interval:
-                        _, end_str = interval.split("-")
+                        parts = interval.split("-")
+                        end_str = parts[1] if len(parts) > 1 else start_time_str
                     else:
                         end_str = start_time_str
+                    
+                    try:
+                        end_time = int(end_str.replace(":", ""))
+                    except ValueError: continue
 
-                    end_time = int(end_str.replace(":", ""))
-
-                    # 🚨 EVITAR GUARDAR DOS VECES EL MISMO DÍA
-                    if day in rangos_guardados:
+                    # 🚨 TU LÓGICA ORIGINAL: Evitar guardar el mismo día dos veces
+                    if day in dias_guardados_rango:
                         continue
+                    dias_guardados_rango.add(day)
 
-                    rangos_guardados.add(day)
+                    rangos_data.append({
+                        'username': username,
+                        'duration': duration_val,
+                        'days': day,
+                        'start_time': start_time,
+                        'end_time': end_time,
+                        'package': package_val
+                    })
 
-                    session.add(SchedulePref(
-                        username=user,
-                        name=name_val,
-                        surname=surname_val,
-                        duration=duration_selector.value,
-                        days=day,
-                        start_time=start_time,
-                        end_time=end_time,
-                        package=package_selector.value or ""
-                    ))
+        if not clases_data and not rangos_data:
+             ui.notify("No hay datos para guardar.", type="warning")
+             return
 
+        # =========================================================
+        # FASE 1: GUARDAR EN NEON (POSTGRES)
+        # =========================================================
+        pg_session = PostgresSession()
+        user_name = ""
+        user_surname = ""
+        
+        try:
+            # A. Obtener Usuario y Actualizar Paquete
+            user_pg = pg_session.query(User).filter_by(username=username).first()
+            if not user_pg:
+                ui.notify("Usuario no encontrado en la nube", type="negative")
+                return
+            
+            user_pg.package = package_val
+            user_name = user_pg.name
+            user_surname = user_pg.surname
 
-            # =====================
-            #   GUARDAR CAMBIOS
-            # =====================
-            session.commit()
-            sync_sqlite_to_postgres()
-            ui.notify("Información guardada correctamente", type="positive")
-            logger.info("Datos guardados correctamente")
+            # B. Insertar Clases Asignadas
+            # Nota: Asumimos 'append' (agregar), no borramos historial de clases asignadas
+            for item in clases_data:
+                pg_session.add(AsignedClasses(
+                    username=item['username'],
+                    name=user_name,
+                    surname=user_surname,
+                    duration=item['duration'],
+                    date=item['date'],
+                    days=item['days'],
+                    start_time=item['start_time'],
+                    end_time=item['end_time'],
+                    package=item['package'],
+                    status="Pendiente" # Estado por defecto
+                ))
+
+            # C. Insertar Rangos Horarios
+            # Nota: Asumimos 'append' según tu lógica, aunque normalmente los rangos se resetean.
+            # Si quisieras resetear, descomenta: 
+            # pg_session.query(SchedulePref).filter_by(username=username).delete()
+            for item in rangos_data:
+                pg_session.add(SchedulePref(
+                    username=item['username'],
+                    name=user_name,
+                    surname=user_surname,
+                    duration=item['duration'],
+                    days=item['days'],
+                    start_time=item['start_time'],
+                    end_time=item['end_time'],
+                    package=item['package']
+                ))
+
+            pg_session.commit()
+            logger.info("✅ Datos guardados en NEON")
 
         except Exception as e:
-            session.rollback()
-            ui.notify(f"Error al guardar: {e}", type="negative")
-            logger.exception(e)
-
+            pg_session.rollback()
+            logger.error(f"❌ Error Neon: {e}")
+            ui.notify(f"Error guardando en la nube: {e}", type="negative")
+            return
         finally:
-            session.close()
+            pg_session.close()
+
+        # =========================================================
+        # FASE 2: RESPALDO EN SQLITE
+        # =========================================================
+        try:
+            sq_session = BackupSession()
+            
+            # A. Actualizar Paquete Local
+            user_sq = sq_session.query(User).filter_by(username=username).first()
+            if user_sq:
+                user_sq.package = package_val
+
+            # B. Replicar Clases
+            for item in clases_data:
+                sq_session.add(AsignedClasses(
+                    username=item['username'],
+                    name=user_name,
+                    surname=user_surname,
+                    duration=item['duration'],
+                    date=item['date'],
+                    days=item['days'],
+                    start_time=item['start_time'],
+                    end_time=item['end_time'],
+                    package=item['package'],
+                    status="Pendiente"
+                ))
+
+            # C. Replicar Rangos
+            for item in rangos_data:
+                sq_session.add(SchedulePref(
+                    username=item['username'],
+                    name=user_name,
+                    surname=user_surname,
+                    duration=item['duration'],
+                    days=item['days'],
+                    start_time=item['start_time'],
+                    end_time=item['end_time'],
+                    package=item['package']
+                ))
+
+            sq_session.commit()
+            logger.info("💾 Respaldo local actualizado")
+
+        except Exception as e:
+            logger.warning(f"⚠️ Error en respaldo local: {e}")
+        finally:
+            sq_session.close()
+
+        ui.notify("Información guardada correctamente", type="positive")
 
     button.on("click", save_tables_to_db)
     return save_tables_to_db

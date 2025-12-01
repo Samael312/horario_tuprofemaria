@@ -1,6 +1,8 @@
 from nicegui import ui, app
 import pandas as pd
-from db.sqlite_db import SQLiteSession
+# --- CAMBIO: Usamos Postgres (Neon) como fuente de la verdad ---
+from db.postgres_db import PostgresSession
+# ---------------------------------------------------------------
 from db.models import User
 from components.headerAdmin import create_admin_screen
 
@@ -18,7 +20,8 @@ def students():
         ui.label("Sesión inválida").classes('text-negative p-4')
         return
 
-    session = SQLiteSession()
+    # Usamos la sesión de Postgres para leer los datos reales de la nube
+    session = PostgresSession()
     try:
         # Obtenemos lista de usuarios 
         # Traemos todos para poder mostrar métricas

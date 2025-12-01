@@ -1,7 +1,16 @@
 ﻿import logging
 import os
 from nicegui import ui
+
+from dotenv import load_dotenv  
 from frontend.ui import init_ui
+
+# 2. CARGAR VARIABLES DE ENTORNO ANTES DE NADA
+load_dotenv() 
+
+# 3. INICIALIZAR LAS BASES DE DATOS
+import db.postgres_db
+import db.sqlite_db  
 
 # =====================================================
 # PRE-CONFIGURACIÓN 

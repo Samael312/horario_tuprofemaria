@@ -1,8 +1,11 @@
 from nicegui import ui, app
-from db.sqlite_db import SQLiteSession
-from db.models import User
 from passlib.hash import pbkdf2_sha256
-from auth.sync import sync_sqlite_to_postgres
+
+# --- NUEVOS IMPORTS ---
+from db.models import User
+from db.postgres_db import PostgresSession  # Fuente de la verdad
+from db.sqlite_db import BackupSession       # Respaldo
+# ----------------------
 
 # =====================================================
 # CONFIGURACIÓN
@@ -46,7 +49,7 @@ def reset_password_screen():
 
     def render_reset_content():
         
-        # --- LÓGICA ---
+        # --- LÓGICA DE CAMBIO DE CONTRASEÑA ACTUALIZADA ---
         def try_reset():
             u = username_input.value.strip()
             old_p = old_password_input.value.strip()
@@ -56,41 +59,64 @@ def reset_password_screen():
                 ui.notify('Por favor, completa todos los campos.', type='warning', icon='warning')
                 return
 
-            session = SQLiteSession()
+            # FASE 1: ACTUALIZAR EN LA NUBE (NEON - PRINCIPAL)
+            session_pg = PostgresSession()
+            success = False
+            
             try:
-                user = session.query(User).filter_by(username=u).first()
+                user_pg = session_pg.query(User).filter_by(username=u).first()
                 
-                # 1. Verificar Usuario
-                if not user:
+                # 1. Verificar Usuario en Neon
+                if not user_pg:
                     ui.notify('El usuario no existe.', type='negative', icon='person_off')
                     username_input.props('error error-message="Usuario no encontrado"')
                     return
 
-                # 2. Verificar Contraseña Antigua
-                if not pbkdf2_sha256.verify(old_p, user.password_hash):
+                # 2. Verificar Contraseña Antigua (Hash)
+                if not pbkdf2_sha256.verify(old_p, user_pg.password_hash):
                     ui.notify('La contraseña actual es incorrecta.', type='negative', icon='gpp_bad')
-                    old_password_input.props('error') # Marca el input en rojo
+                    old_password_input.props('error') 
                     return
 
-                # 3. Actualizar
-                user.password_hash = pbkdf2_sha256.hash(new_p)
-                session.commit()
+                # 3. Actualizar en Neon
+                new_hash = pbkdf2_sha256.hash(new_p)
+                user_pg.password_hash = new_hash
+                session_pg.commit()
                 
+                success = True # Marcamos éxito para proceder al backup
                 ui.notify('¡Contraseña actualizada correctamente!', type='positive', icon='check_circle')
                 
-                # 4. Sincronizar
-                try:
-                    sync_sqlite_to_postgres()
-                except Exception as e:
-                    print(f"Error sync: {e}")
-
-                # Redirigir
+                # Redirigir tras breve pausa
                 ui.timer(1.5, lambda: ui.navigate.to('/login'))
 
             except Exception as e:
-                ui.notify(f"Error del sistema: {str(e)}", type='negative')
+                session_pg.rollback()
+                ui.notify(f"Error de conexión con el servidor: {str(e)}", type='negative')
+                return
             finally:
-                session.close()
+                session_pg.close()
+
+            # FASE 2: ACTUALIZAR RESPALDO (SQLITE - SECUNDARIO)
+            # Solo si la fase 1 fue exitosa
+            if success:
+                try:
+                    session_sqlite = BackupSession()
+                    user_sqlite = session_sqlite.query(User).filter_by(username=u).first()
+                    
+                    if user_sqlite:
+                        # Si el usuario existe en el backup, actualizamos su contraseña también
+                        user_sqlite.password_hash = new_hash
+                        session_sqlite.commit()
+                        print(f"💾 Backup actualizado para usuario {u}")
+                    else:
+                        print(f"⚠️ El usuario {u} no existía en el backup local (se omitió actualización local).")
+                        
+                except Exception as e:
+                    # Si falla el backup, NO avisamos al usuario (ya que su contraseña real sí cambió)
+                    # Solo lo registramos en consola
+                    print(f"⚠️ Error actualizando backup local: {e}")
+                finally:
+                    session_sqlite.close()
 
         # --- DISEÑO ---
         with ui.card().classes('w-full max-w-sm p-8 shadow-xl rounded-2xl bg-white border border-gray-100'):

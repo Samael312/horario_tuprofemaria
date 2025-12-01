@@ -1,7 +1,8 @@
 import pandas as pd
 from nicegui import ui, app
 from components.header import create_main_screen
-from db.sqlite_db import SQLiteSession
+from db.postgres_db import PostgresSession 
+# --------------------------------------------------
 from db.models import User, SchedulePref, AsignedClasses
 from components.delete_all import confirm_delete
 
@@ -14,6 +15,7 @@ def profile():
         ui.label('PERFIL').classes('text-h4 absolute left-1/2 transform -translate-x-1/2 font-bold text-gray-800')
         with ui.fab(icon='menu', label='Opciones', color='pink'):
             ui.fab_action(icon='edit', label='Editar', on_click=lambda: ui.navigate.to('/profile_edit'), color='positive')
+            # OJO: Asegúrate de actualizar también 'confirm_delete' para que borre de Neon
             ui.fab_action(icon='delete', label='Eliminar cuenta', on_click=confirm_delete, color='negative')
 
     # --- Verificación de Sesión ---
@@ -22,11 +24,16 @@ def profile():
         ui.navigate.to('/login')
         return
 
-    session = SQLiteSession()
+    # --- CAMBIO: USAR SESIÓN DE POSTGRES PARA LEER DATOS REALES ---
+    session = PostgresSession()
+    # -------------------------------------------------------------
+    
     try:
+        # Ahora esta consulta busca en la Nube (Neon)
         user_obj = session.query(User).filter(User.username == username).first()
+        
         if not user_obj:
-            ui.notify("Usuario no encontrado en DB", type='negative')
+            ui.notify("Usuario no encontrado en la Base de Datos", type='negative')
             return
 
         # --- Contenedor Principal ---

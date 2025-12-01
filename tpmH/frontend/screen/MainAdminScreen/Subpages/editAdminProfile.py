@@ -1,9 +1,11 @@
 from nicegui import ui, app
 import logging
 from components.headerAdmin import create_admin_screen
-from db.sqlite_db import SQLiteSession
+# --- IMPORTS ACTUALIZADOS ---
+from db.postgres_db import PostgresSession  # Fuente de la verdad
+from db.sqlite_db import BackupSession       # Respaldo
 from db.models import User, ScheduleProf, ScheduleProfEsp
-from auth.sync_edit import sync_sqlite_to_postgres_edit
+# ----------------------------
 from zoneinfo import available_timezones
 from components.h_selection import make_selection_handler
 from components.clear_table import clear_table
@@ -24,11 +26,12 @@ def profileA_edit():
         ui.navigate.to('/login')
         return
 
-    session = SQLiteSession()
+    # --- CARGA DE DATOS DESDE NEON (NUBE) ---
+    session = PostgresSession()
     try:
         user_obj = session.query(User).filter(User.username == username).first()
         if not user_obj:
-            ui.label("Usuario no encontrado").classes('text-negative p-4')
+            ui.label("Usuario no encontrado en la nube").classes('text-negative p-4')
             return
 
         # --- INICIALIZACIÓN DE DATOS ---
@@ -130,15 +133,19 @@ def profileA_edit():
                                 add_btn_gen = ui.button('Añadir', icon='add', color='pink-600').props('push')
 
                             # Tabla General
+                            # Filtramos las filas vacías para mostrar
                             filtered_rows_gen = [{'hora': h, **vals} for h, vals in local_group_general.items() if any(vals.values())]
+                            
                             cols_gen = [{'name': 'hora', 'label': 'HORA', 'field': 'hora', 'align': 'center', 'headerClasses': 'bg-gray-100 font-bold'}] + \
-                                       [{'name': d, 'label': d[:3].upper(), 'field': d, 'align': 'center', 'headerClasses': 'bg-pink-50 text-pink-900 font-bold'} for d in days_of_week]
+                                     [{'name': d, 'label': d[:3].upper(), 'field': d, 'align': 'center', 'headerClasses': 'bg-pink-50 text-pink-900 font-bold'} for d in days_of_week]
+                            
                             table_gen = ui.table(columns=cols_gen, rows=filtered_rows_gen, row_key='hora', selection='multiple')\
                                 .classes('w-full border border-gray-200 rounded-lg').props('flat bordered separator=cell density=compact')
                             
                             with ui.row().classes('gap-2'):
                                 ui.button('Limpiar', on_click=lambda: clear_table(table_gen, local_group_general), color='warning', icon='cleaning_services').props('flat dense')
                                 ui.button('Borrar Selección', color='negative', icon='delete', on_click=lambda: delete_selected_rows_v2(table_gen, selection_state_gen, id_column="hora")).props('flat dense')
+                            
                             sel_hand_gen, selection_state_gen = make_selection_handler(table_gen, logger=logger)
                             table_gen.on('selection', sel_hand_gen)
 
@@ -190,79 +197,144 @@ def profileA_edit():
                             def clear_esp():
                                 table_esp.rows = []
                                 table_esp.update()
+                            
                             with ui.row().classes('gap-2'):
                                 ui.button('Limpiar', on_click=clear_esp, color='warning', icon='cleaning_services').props('flat dense')
                                 ui.button('Borrar Selección', color='negative', icon='delete', on_click=lambda: delete_selected_rows_v2(table_esp, selection_state_esp, id_column="hora")).props('flat dense')
+                            
                             sel_hand_esp, selection_state_esp = make_selection_handler(table_esp, logger=logger)
                             table_esp.on('selection', sel_hand_esp)
 
             # ==========================
-            # LÓGICA DE GUARDADO
+            # LÓGICA DE GUARDADO (NEON -> SQLITE)
             # ==========================
-            def save_all_changes():
-                session2 = SQLiteSession()
-                try:
-                    ui.notify("Guardando...", type='ongoing', timeout=1000)
-                    u = session2.query(User).filter(User.username == username).first()
-                    if u:
-                        u.name = personal_inputs['name'].value
-                        u.surname = personal_inputs['surname'].value
-                        u.time_zone = personal_inputs['time_zone'].value
-                        u.email = personal_inputs['email'].value
-                    
-                    # 1. Guardar General
-                    session2.query(ScheduleProf).filter(ScheduleProf.username == username).delete()
-                    seen_gen = set()
-                    for row in table_gen.rows:
-                        for d in days_of_week:
-                            cell = row.get(d)
-                            # Se espera formato: "08:00-09:00 (Virtual)"
-                            if cell and "-" in str(cell):
-                                try:
-                                    # Parser robusto
-                                    parts = cell.split('(')
-                                    time_part = parts[0].strip()
-                                    # Extraer disponibilidad
-                                    avai_part = parts[1].replace(')', '').strip() if len(parts) > 1 else "General"
-                                    
-                                    s_str, e_str = time_part.split('-')
-                                    s_int = int(s_str.replace(':', ''))
-                                    e_int = int(e_str.replace(':', ''))
-                                    
-                                    key = (d, s_int, e_int)
-                                    if key not in seen_gen:
-                                        session2.add(ScheduleProf(
-                                            username=username, name=u.name, surname=u.surname, 
-                                            days=d, start_time=s_int, end_time=e_int, availability=avai_part
-                                        ))
-                                        seen_gen.add(key)
-                                except: pass
+            async def save_all_changes():
+                # 1. Recolectar Datos de la UI
+                user_update_data = {
+                    'name': personal_inputs['name'].value,
+                    'surname': personal_inputs['surname'].value,
+                    'time_zone': personal_inputs['time_zone'].value,
+                    'email': personal_inputs['email'].value
+                }
 
-                    # 2. Guardar Específico
-                    session2.query(ScheduleProfEsp).filter(ScheduleProfEsp.username == username).delete()
-                    for row in table_esp.rows:
-                        if "-" in row['hora']:
+                # Datos Horario General
+                new_general_schedules = []
+                seen_gen = set()
+                for row in table_gen.rows:
+                    for d in days_of_week:
+                        cell = row.get(d)
+                        if cell and "-" in str(cell):
                             try:
-                                s_str, e_str = row['hora'].split('-')
-                                # Buscamos la clave 'disponibilidad' (que viene del botón corregido)
-                                avai_val = row.get('disponibilidad') or row.get('availability') or "General"
+                                parts = cell.split('(')
+                                time_part = parts[0].strip()
+                                avai_part = parts[1].replace(')', '').strip() if len(parts) > 1 else "General"
                                 
-                                session2.add(ScheduleProfEsp(
-                                    username=username, date=row['fecha'], days=row['dia'],
-                                    start_time=int(s_str.replace(':', '')), end_time=int(e_str.replace(':', '')),
-                                    avai=avai_val 
-                                ))
+                                s_str, e_str = time_part.split('-')
+                                s_int = int(s_str.replace(':', ''))
+                                e_int = int(e_str.replace(':', ''))
+                                
+                                key = (d, s_int, e_int)
+                                if key not in seen_gen:
+                                    new_general_schedules.append({
+                                        'username': username,
+                                        'name': user_update_data['name'],
+                                        'surname': user_update_data['surname'],
+                                        'days': d,
+                                        'start_time': s_int,
+                                        'end_time': e_int,
+                                        'availability': avai_part
+                                    })
+                                    seen_gen.add(key)
                             except: pass
 
-                    session2.commit()
-                    sync_sqlite_to_postgres_edit()
-                    ui.notify("Perfil actualizado exitosamente", type='positive', icon='check_circle')
-                    ui.timer(1.0, lambda: ui.navigate.to('/adminProfile'))
+                # Datos Fechas Específicas
+                new_specific_schedules = []
+                for row in table_esp.rows:
+                    if "-" in row['hora']:
+                        try:
+                            s_str, e_str = row['hora'].split('-')
+                            s_int = int(s_str.replace(':', ''))
+                            e_int = int(e_str.replace(':', ''))
+                            avai_val = row.get('disponibilidad') or row.get('availability') or "General"
+                            
+                            new_specific_schedules.append({
+                                'username': username,
+                                'name': user_update_data['name'],
+                                'surname': user_update_data['surname'],
+                                'date': row['fecha'],
+                                'days': row['dia'],
+                                'start_time': s_int,
+                                'end_time': e_int,
+                                'avai': avai_val
+                            })
+                        except: pass
+
+                ui.notify("Guardando en la nube...", type='ongoing', timeout=1000)
+
+                # --- FASE 1: NEON (POSTGRES) ---
+                pg_session = PostgresSession()
+                try:
+                    # Actualizar Usuario
+                    u_pg = pg_session.query(User).filter(User.username == username).first()
+                    if u_pg:
+                        u_pg.name = user_update_data['name']
+                        u_pg.surname = user_update_data['surname']
+                        u_pg.time_zone = user_update_data['time_zone']
+                        u_pg.email = user_update_data['email']
+
+                    # Reemplazar Horarios Generales
+                    pg_session.query(ScheduleProf).filter(ScheduleProf.username == username).delete()
+                    for item in new_general_schedules:
+                        pg_session.add(ScheduleProf(**item))
+
+                    # Reemplazar Fechas Específicas
+                    pg_session.query(ScheduleProfEsp).filter(ScheduleProfEsp.username == username).delete()
+                    for item in new_specific_schedules:
+                        pg_session.add(ScheduleProfEsp(**item))
+
+                    pg_session.commit()
+                    logger.info("✅ Perfil Admin guardado en NEON")
+
                 except Exception as e:
-                    session2.rollback()
-                    ui.notify(f"Error: {e}", type='negative')
+                    pg_session.rollback()
+                    logger.error(f"❌ Error guardando en NEON: {e}")
+                    ui.notify(f"Error guardando en la nube: {e}", type='negative')
+                    return
                 finally:
-                    session2.close()
+                    pg_session.close()
+
+                # --- FASE 2: SQLITE (RESPALDO) ---
+                try:
+                    sq_session = BackupSession()
+                    
+                    # Usuario
+                    u_sq = sq_session.query(User).filter(User.username == username).first()
+                    if u_sq:
+                        u_sq.name = user_update_data['name']
+                        u_sq.surname = user_update_data['surname']
+                        u_sq.time_zone = user_update_data['time_zone']
+                        u_sq.email = user_update_data['email']
+
+                    # General
+                    sq_session.query(ScheduleProf).filter(ScheduleProf.username == username).delete()
+                    for item in new_general_schedules:
+                        sq_session.add(ScheduleProf(**item))
+
+                    # Específico
+                    sq_session.query(ScheduleProfEsp).filter(ScheduleProfEsp.username == username).delete()
+                    for item in new_specific_schedules:
+                        sq_session.add(ScheduleProfEsp(**item))
+
+                    sq_session.commit()
+                    logger.info("💾 Respaldo Admin guardado en SQLITE")
+
+                except Exception as e:
+                    logger.warning(f"⚠️ Error en backup local: {e}")
+                finally:
+                    sq_session.close()
+
+                ui.notify("Perfil actualizado exitosamente", type='positive', icon='check_circle')
+                ui.timer(1.0, lambda: ui.navigate.to('/adminProfile'))
 
             with ui.row().classes('w-full justify-center pt-4 pb-8'):
                 ui.button("Guardar Todos los Cambios", on_click=save_all_changes, icon='save').props('push color=positive size=lg').classes('px-8')
@@ -270,14 +342,14 @@ def profileA_edit():
     finally:
         session.close()
 
-    # Conexión de Botones Lógicos
+    # Conexión de Botones Lógicos (Fuera del flujo visual para evitar duplicados)
     make_add_hour_avai_button(
         add_btn_gen, day_selector, avai_selector, f"btn_gen_{username}",
         start_time, end_time, hours_of_day, local_group_general, days_of_week, table_gen,
         notify_success="Bloque añadido"
     )
     
-    # Dummy dict necesario por la firma de la función, aunque no se use para grid
+    # Dummy dict necesario por la firma de la función
     local_dummy = {}
     make_add_hours_by_date_button(
         add_btn_esp, start_time_e, end_time_e, avai_selector_e, date_input_e,

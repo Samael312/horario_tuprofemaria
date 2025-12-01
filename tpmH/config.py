@@ -1,9 +1,14 @@
 import os
+from dotenv import load_dotenv
 
-# SQLite local
-SQLITE_URL = "sqlite:///db/usuarios.db"
+# Cargar las variables del archivo .env (solo funciona en local)
+load_dotenv()
 
-# PostgreSQL remoto (Render)
-POSTGRES_URL = "postgresql://horarios_tuprofemaria_user:ebfUqBNuWWErqEv4vjXG579zztz5RnYC@dpg-d4ct3ii4d50c73ddgkvg-a.oregon-postgres.render.com/horarios_tuprofemaria"
-if POSTGRES_URL is None:
-    raise RuntimeError("La variable de entorno DATABASE_URL no está definida")
+# Leer la variable
+POSTGRES_URL = os.getenv("POSTGRES_URL")
+
+# Verificación
+if not POSTGRES_URL:
+    raise RuntimeError("❌ ERROR: No se encontró la variable POSTGRES_URL. Asegúrate de tener el archivo .env creado o la variable configurada en Render.")
+else:
+    print("✅ Configuración de base de datos cargada correctamente.")

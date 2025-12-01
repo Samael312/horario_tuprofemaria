@@ -1,32 +1,27 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from db.models import Base
+from .models import Base # Asegúrate que la importación apunte a tus modelos
 
 # =====================================================
-# CONFIGURACIÓN DE LA BASE DE DATOS
+# CONFIGURACIÓN DE LA BASE DE DATOS (RESPALDO)
 # =====================================================
 
-# 1. Obtener ruta absoluta del directorio actual (donde está este archivo)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 2. Definir ruta completa para el archivo .sqlite
-# Esto asegura que se cree en /opt/render/project/src/tpmH/db/database.sqlite
-DB_NAME = "database.sqlite"
+# Nombre del archivo de respaldo
+DB_NAME = "backup_local.sqlite" # Le cambié el nombre para identificarlo mejor
 DB_PATH = os.path.join(BASE_DIR, DB_NAME)
 
-# 3. Crear URL de conexión usando la ruta absoluta
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
-# Crear el motor
-# check_same_thread=False es necesario para SQLite en entornos web
 sqlite_engine = create_engine(
     DATABASE_URL, 
     connect_args={"check_same_thread": False}
 )
 
-# Crear tablas
+# Crear tablas en el archivo local
 Base.metadata.create_all(sqlite_engine)
 
-# Crear sesión
-SQLiteSession = sessionmaker(bind=sqlite_engine)
+# RENOMBRADO: Ahora se llama BackupSession para distinguirla
+BackupSession = sessionmaker(bind=sqlite_engine)

@@ -1,10 +1,12 @@
 from nicegui import ui, app
 from components.header import create_main_screen
+# Estos imports cargarán las versiones NUEVAS que acabamos de crear con Postgres
 from frontend.screen.MainScreen.Subpages import old_Student, new_Student 
 
 @ui.page('/mainscreen')
 def mainscreen():
     # Verificar sesión
+    # Este dato se guardó en el Login validado contra Neon
     username = app.storage.user.get("username", "Estudiante")
     
     # Header global

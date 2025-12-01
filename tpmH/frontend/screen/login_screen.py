@@ -3,9 +3,12 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from nicegui import app, ui
-from db.sqlite_db import SQLiteSession
-from db.models import User
 from passlib.hash import pbkdf2_sha256
+
+# --- CAMBIO IMPORTANTE: Usamos Postgres para validar credenciales ---
+from db.postgres_db import PostgresSession
+from db.models import User
+# ------------------------------------------------------------------
 
 # =====================================================
 # CONFIGURACIÓN
@@ -89,12 +92,20 @@ def setup_auth_system():
                     ui.notify("Por favor, completa todos los campos.", type='warning')
                     return
 
-                session = SQLiteSession()
+                # --- CONEXIÓN A NEON (POSTGRES) ---
+                session = PostgresSession()
                 try:
+                    # Buscamos al usuario en la Nube
                     user = session.query(User).filter_by(username=u_val).first()
                     
                     if user and pbkdf2_sha256.verify(p_val, user.password_hash):
-                        # Guardar sesión
+                        
+                        # Verificar si la cuenta está activa (Opcional, pero recomendado)
+                        if getattr(user, 'status', 'Active') != 'Active':
+                             ui.notify("Esta cuenta ha sido desactivada.", type='negative', icon='block')
+                             return
+
+                        # Guardar sesión en el navegador
                         app.storage.user.update({
                             'username': u_val,
                             'authenticated': True,
@@ -105,6 +116,8 @@ def setup_auth_system():
                             'time_zone': getattr(user, 'time_zone', '')
                         })
 
+                        ui.notify(f"Bienvenido de nuevo, {user.name}!", type='positive')
+
                         # Redirección según rol
                         target = '/admin' if user.role == "admin" else '/mainscreen'
                         ui.navigate.to(target)
@@ -112,7 +125,8 @@ def setup_auth_system():
                         ui.notify("Usuario o contraseña incorrectos", type='negative', icon='error')
                         
                 except Exception as e:
-                    ui.notify(f"Error de conexión: {str(e)}", type='negative')
+                    # Error de conexión a Neon
+                    ui.notify(f"Error de conexión con el servidor: {str(e)}", type='negative')
                 finally:
                     session.close()
 

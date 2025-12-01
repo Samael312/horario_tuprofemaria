@@ -1,9 +1,11 @@
 from nicegui import ui, app
 import logging
 from components.header import create_main_screen
-from db.sqlite_db import SQLiteSession
+# --- IMPORTS ACTUALIZADOS ---
+from db.postgres_db import PostgresSession  # Fuente de la verdad
+from db.sqlite_db import BackupSession       # Respaldo
 from db.models import User, SchedulePref
-from auth.sync_edit import sync_sqlite_to_postgres_edit
+# ----------------------------
 from zoneinfo import available_timezones
 from components.h_selection import make_selection_handler
 from components.clear_table import clear_table
@@ -25,14 +27,17 @@ def profile_edit():
 
     create_main_screen()
 
-    session = SQLiteSession()
+    # --- USAR POSTGRES PARA CARGAR DATOS (Fuente Real) ---
+    session = PostgresSession() 
+    # -----------------------------------------------------
+
     try:
         user_obj = session.query(User).filter(User.username == username).first()
         if not user_obj:
-            ui.label("Usuario no encontrado en DB").classes('text-negative mt-4')
+            ui.label("Usuario no encontrado en la Nube").classes('text-negative mt-4')
             return
         
-        # Inicializar estructura de datos para la tabla (Importante reiniciarla al cargar la página)
+        # Inicializar estructura de datos para la tabla
         local_group_data = {h: {d: "" for d in days_of_week} for h in hours_of_day}
 
         # --- CONTENEDOR PRINCIPAL ---
@@ -58,7 +63,6 @@ def profile_edit():
                 with ui.grid(columns=2).classes('w-full p-6 gap-6'):
                     personal_inputs = {}
                     
-                    # Definición de campos con iconos
                     fields_config = [
                         ('name', 'Nombre', user_obj.name, 'badge'),
                         ('surname', 'Apellido', user_obj.surname, 'badge'),
@@ -75,7 +79,6 @@ def profile_edit():
                                     options=sorted(available_timezones()),
                                     value=value
                                 ).props('outlined dense options-dense use-input input-debounce="0" behavior="menu"').classes('w-full')
-                                # Nota: use-input permite filtrar si la lista es larga
                             else:
                                 inp = ui.input(value=value).props('outlined dense').classes('w-full')
                                 inp.add_slot('prepend', f'<q-icon name="{icon}" />')
@@ -84,10 +87,17 @@ def profile_edit():
             # =================================================
             # TARJETA 2: GESTIÓN DE HORARIOS Y PAQUETE
             # =================================================
+            # Consultamos los horarios actuales desde POSTGRES
             rgh_obj = session.query(SchedulePref).filter(SchedulePref.username == username).first()
-            if not rgh_obj:
-                ui.label("No se encontraron datos de rango de horarios").classes('text-negative')
-                return
+            
+            # --- CORRECCIÓN CRÍTICA AQUÍ ---
+            # Obtenemos el valor crudo de la DB
+            raw_package = getattr(rgh_obj, 'package', None) if rgh_obj else None
+            
+            # Validamos: Si el valor existe en la lista de opciones, lo usamos.
+            # Si es '' o algo raro que no está en la lista, usamos None.
+            # Esto evita el ValueError de NiceGUI.
+            package_value = raw_package if raw_package in pack_of_classes else None
 
             with ui.card().classes('w-full p-0 shadow-lg rounded-xl border border-gray-200 overflow-hidden'):
                 # Header Tarjeta
@@ -104,17 +114,16 @@ def profile_edit():
                             ui.label("Paquete de Clases Activo").classes('text-sm font-bold text-gray-600')
                             pkg_select = ui.select(
                                 options=sorted(pack_of_classes),
-                                value=getattr(rgh_obj, 'package', '')
+                                value=package_value  # <-- Usamos el valor validado
                             ).props('outlined dense').classes('w-full md:w-1/2')
                             pkg_select.add_slot('prepend', '<q-icon name="inventory_2" />')
                             rgh_inputs['package'] = pkg_select
 
                     ui.separator().classes('my-2')
 
-                    # --- SECCIÓN CONTROL DE HORARIO (BARRA DE HERRAMIENTAS) ---
+                    # --- SECCIÓN CONTROL DE HORARIO ---
                     ui.label("Añadir Disponibilidad").classes('text-md font-bold text-gray-700 mb-2')
                     
-                    # Contenedor gris para los controles
                     with ui.row().classes('w-full bg-gray-50 p-4 rounded-lg border border-gray-200 items-center gap-4 justify-between wrap'):
                         
                         # 1. Días
@@ -127,7 +136,8 @@ def profile_edit():
                                 label='Seleccionar días'
                             ).props('outlined dense bg-white').classes('min-w-[200px]')
 
-                        # 2. Duración (Cálculo del default)
+                        # 2. Duración
+                        # Calculamos default desde Postgres
                         durations_user = [s.duration for s in session.query(SchedulePref).filter(SchedulePref.username == username).all()]
                         default_duration = Counter(durations_user).most_common(1)[0][0] if durations_user else None
                         
@@ -139,11 +149,10 @@ def profile_edit():
                                 label='Minutos'
                             ).props('outlined dense bg-white').classes('w-32')
 
-                        # 3. Horas (Inicio y Fin)
+                        # 3. Horas
                         with ui.column().classes('gap-1'):
                             ui.label('3. Horario').classes('text-xs font-bold text-gray-500 uppercase')
                             with ui.row().classes('gap-2 items-center'):
-                                # Input Hora Inicio
                                 with ui.input('Inicio').props('outlined dense bg-white placeholder="00:00" mask="time"').classes('w-28') as start_time:
                                     with ui.menu().props('no-parent-event') as menuD:
                                         with ui.time().bind_value(start_time):
@@ -154,7 +163,6 @@ def profile_edit():
 
                                 ui.label("-").classes('text-gray-400')
 
-                                # Input Hora Fin
                                 with ui.input('Fin').props('outlined dense bg-white placeholder="00:00" mask="time"').classes('w-28') as end_time:
                                     with ui.menu().props('no-parent-event') as menuD2:
                                         with ui.time().bind_value(end_time):
@@ -167,8 +175,7 @@ def profile_edit():
                         add_hour_btn = ui.button(icon='add', color='primary').props('round shadow-lg').tooltip('Agregar al horario')
 
                     # --- TABLA DE HORARIOS ---
-                    
-                    # Preparar datos existentes
+                    # Preparar datos existentes (Desde Postgres)
                     schedule_data = session.query(SchedulePref).filter(SchedulePref.username == username).all()
                     if schedule_data:
                         for s in schedule_data:
@@ -179,13 +186,12 @@ def profile_edit():
                             if h_ini in local_group_data: local_group_data[h_ini][s.days] = texto_intervalo
                             if h_fin in local_group_data: local_group_data[h_fin][s.days] = texto_intervalo
 
-                    # Filtrar filas vacías
+                    # Filtrar filas vacías para UI
                     filtered_rows = []
                     for hora, vals in local_group_data.items():
                         if any(v != "" for v in vals.values()):
                             filtered_rows.append({'hora': hora, **vals})
 
-                    # Definir columnas con estilos personalizados
                     table_cols = [
                         {'name': 'hora', 'label': 'HORA', 'field': 'hora', 'align': 'center', 'headerClasses': 'bg-gray-100 text-gray-800 font-bold'},
                     ] + [
@@ -193,7 +199,6 @@ def profile_edit():
                         for d in days_of_week
                     ]
 
-                    # Renderizar Tabla
                     table = ui.table(
                         columns=table_cols,
                         rows=filtered_rows,
@@ -201,11 +206,9 @@ def profile_edit():
                         selection='multiple'
                     ).classes('w-full mt-4 border border-gray-200 rounded-lg overflow-hidden shadow-sm').props('flat bordered separator=cell density=compact')
 
-                    # Handlers
                     selection_handler, selection_state = make_selection_handler(table, logger=logger)
                     table.on('selection', selection_handler)
 
-                    # Botones de acción de tabla (Pie de tabla)
                     with ui.row().classes('w-full justify-end gap-2 mt-2'):
                          ui.button('Limpiar Tabla', 
                                 on_click=lambda: clear_table(table, local_group_data),
@@ -218,62 +221,111 @@ def profile_edit():
                                 ).props('flat dense')
 
             # =================================================
-            # BOTÓN GUARDAR (FOOTER FLOTANTE O FINAL)
+            # LÓGICA DE GUARDADO (NEON -> SQLITE)
             # =================================================
             def save_changes():
-                session2 = SQLiteSession()
-                try:
-                    # 1. Guardar datos personales
-                    u2 = session2.query(User).filter(User.username == username).first()
-                    if u2:
-                        u2.name = personal_inputs['name'].value
-                        u2.surname = personal_inputs['surname'].value
-                        u2.time_zone = personal_inputs['time_zone'].value
-                        u2.email = personal_inputs['email'].value
-                    
-                    # 2. Guardar Horarios
-                    session2.query(SchedulePref).filter(SchedulePref.username == username).delete()
-                    
-                    pkg_val = rgh_inputs['package'].value
-                    # Nombre y apellido pueden venir del input actualizado o del objeto original
-                    nm_val = personal_inputs['name'].value
-                    sn_val = personal_inputs['surname'].value
-                    dur_val = duration_selector.value
-                    
-                    seen_intervals = set()
-
-                    for row in table.rows:
-                        for day in days_of_week:
-                            cell_val = row.get(day)
-                            if cell_val and "-" in str(cell_val):
-                                parts = cell_val.split('-')
-                                if len(parts) == 2:
-                                    try:
-                                        s_int = int(parts[0].strip().replace(':', ''))
-                                        e_int = int(parts[1].strip().replace(':', ''))
-                                        
-                                        unique_key = (day, s_int, e_int)
-                                        if unique_key not in seen_intervals:
-                                            new_pref = SchedulePref(
-                                                username=username, name=nm_val, surname=sn_val,
-                                                duration=dur_val, package=pkg_val, days=day,
-                                                start_time=s_int, end_time=e_int
-                                            )
-                                            session2.add(new_pref)
-                                            seen_intervals.add(unique_key)
-                                    except ValueError: pass
-                    
-                    session2.commit()
-                    sync_sqlite_to_postgres_edit()
-                    ui.notify("Perfil actualizado correctamente", type='positive', icon='check_circle')
-                    ui.timer(1.0, lambda: ui.navigate.to('/profile'))
+                # 1. RECOLECTAR DATOS DE LA UI
+                # Esto lo hacemos una sola vez para no repetir lógica
                 
+                # Datos de Usuario
+                user_data_update = {
+                    'name': personal_inputs['name'].value,
+                    'surname': personal_inputs['surname'].value,
+                    'time_zone': personal_inputs['time_zone'].value,
+                    'email': personal_inputs['email'].value
+                }
+                
+                # Datos de Horarios (Parsear la tabla UI a lista de diccionarios)
+                pkg_val = rgh_inputs['package'].value
+                dur_val = duration_selector.value
+                new_schedules = []
+                seen_intervals = set()
+
+                for row in table.rows:
+                    for day in days_of_week:
+                        cell_val = row.get(day)
+                        if cell_val and "-" in str(cell_val):
+                            parts = cell_val.split('-')
+                            if len(parts) == 2:
+                                try:
+                                    s_int = int(parts[0].strip().replace(':', ''))
+                                    e_int = int(parts[1].strip().replace(':', ''))
+                                    
+                                    unique_key = (day, s_int, e_int)
+                                    if unique_key not in seen_intervals:
+                                        # Creamos el diccionario con los datos
+                                        new_schedules.append({
+                                            'username': username,
+                                            'name': user_data_update['name'],
+                                            'surname': user_data_update['surname'],
+                                            'duration': dur_val,
+                                            'package': pkg_val,
+                                            'days': day,
+                                            'start_time': s_int,
+                                            'end_time': e_int
+                                        })
+                                        seen_intervals.add(unique_key)
+                                except ValueError: pass
+
+                # 2. FASE 1: GUARDAR EN NEON (PRINCIPAL)
+                pg_session = PostgresSession()
+                try:
+                    # Actualizar Usuario
+                    u_pg = pg_session.query(User).filter(User.username == username).first()
+                    if u_pg:
+                        u_pg.name = user_data_update['name']
+                        u_pg.surname = user_data_update['surname']
+                        u_pg.time_zone = user_data_update['time_zone']
+                        u_pg.email = user_data_update['email']
+                    
+                    # Actualizar Horarios (Borrar viejos -> Insertar nuevos)
+                    pg_session.query(SchedulePref).filter(SchedulePref.username == username).delete()
+                    
+                    for item in new_schedules:
+                        pg_session.add(SchedulePref(**item))
+                    
+                    pg_session.commit()
+                    logger.info("✅ Cambios guardados en NEON")
+
                 except Exception as e:
-                    session2.rollback()
-                    logger.error(f"Error save: {e}")
-                    ui.notify(f"Error: {e}", type='negative')
+                    pg_session.rollback()
+                    logger.error(f"❌ Error guardando en NEON: {e}")
+                    ui.notify(f"Error guardando en la nube: {e}", type='negative')
+                    return # Si falla la nube, no tocamos el backup
                 finally:
-                    session2.close()
+                    pg_session.close()
+
+                # 3. FASE 2: ACTUALIZAR RESPALDO (SQLITE)
+                # Solo llegamos aquí si Fase 1 fue éxito
+                try:
+                    sqlite_session = BackupSession()
+                    
+                    # Actualizar Usuario Backup
+                    u_sq = sqlite_session.query(User).filter(User.username == username).first()
+                    if u_sq:
+                        u_sq.name = user_data_update['name']
+                        u_sq.surname = user_data_update['surname']
+                        u_sq.time_zone = user_data_update['time_zone']
+                        u_sq.email = user_data_update['email']
+                    
+                    # Actualizar Horarios Backup
+                    sqlite_session.query(SchedulePref).filter(SchedulePref.username == username).delete()
+                    
+                    for item in new_schedules:
+                        sqlite_session.add(SchedulePref(**item))
+                    
+                    sqlite_session.commit()
+                    logger.info("💾 Respaldo actualizado en SQLITE")
+                    
+                except Exception as e:
+                    # Si falla el backup, solo avisamos en consola
+                    logger.warning(f"⚠️ Error actualizando backup local: {e}")
+                finally:
+                    sqlite_session.close()
+
+                # Notificar y Redirigir
+                ui.notify("Perfil actualizado correctamente", type='positive', icon='check_circle')
+                ui.timer(1.0, lambda: ui.navigate.to('/profile'))
 
             # Botón grande al final
             with ui.row().classes('w-full justify-center pt-4 pb-8'):
@@ -284,7 +336,7 @@ def profile_edit():
     finally:
         session.close()
 
-    # Lógica del botón agregar hora (fuera del flujo visual, solo lógica)
+    # Lógica del botón agregar hora
     make_add_hour_button(
         add_hour_btn,
         day_selector=day_selector,
@@ -292,7 +344,7 @@ def profile_edit():
         button_id=f"btn_add_{username}",
         time_input=start_time,
         end_time_input=end_time,
-        valid_hours=hours_of_day, # Asegúrate que esto existe en share_data
+        valid_hours=hours_of_day,
         group_data=local_group_data,
         days_of_week=days_of_week,
         table=table,

@@ -1,9 +1,11 @@
 from nicegui import ui, app
 import logging
 from components.headerAdmin import create_admin_screen
-from db.sqlite_db import SQLiteSession
+# --- IMPORTS ACTUALIZADOS ---
+from db.postgres_db import PostgresSession  # Fuente de la verdad
+from db.sqlite_db import BackupSession       # Respaldo
 from db.models import User
-from auth.sync_edit import sync_sqlite_to_postgres_edit
+# ----------------------------
 from components.h_selection import make_selection_handler
 from components.delete_rows import delete_selected_rows_v2
 from components.share_data import pack_of_classes
@@ -59,9 +61,10 @@ def students_edit():
                             on_click=lambda: delete_selected_rows_v2(table, selection_state, id_column="Usuario")
                         ).props('flat dense')
 
-            session = SQLiteSession()
+            # --- CARGA DE DATOS DESDE NEON (NUBE) ---
+            session = PostgresSession()
             try:
-                # Cargar Datos
+                # Cargar Datos de la nube
                 student_data = session.query(User).filter(User.role != 'admin').all()
 
                 rows = [{
@@ -92,9 +95,9 @@ def students_edit():
                     pagination={'rowsPerPage': 10}
                 ).classes('w-full').props('flat bordered separator=cell')
 
-                # --- VUE SLOTS (Personalización Visual de Celdas) ---
+                # --- VUE SLOTS (Personalización Visual) ---
                 
-                # Slot Rol: Chip Rojo/Azul
+                # Slot Rol
                 table.add_slot('body-cell-Role', '''
                     <q-td :props="props">
                         <q-select
@@ -105,8 +108,8 @@ def students_edit():
                         >
                             <template v-slot:selected-item="scope">
                                 <q-chip dense :color="props.row.Role === 'admin' ? 'red-1' : 'blue-1'" 
-                                        :text-color="props.row.Role === 'admin' ? 'red-9' : 'blue-9'" 
-                                        :icon="props.row.Role === 'admin' ? 'security' : 'person'">
+                                            :text-color="props.row.Role === 'admin' ? 'red-9' : 'blue-9'" 
+                                            :icon="props.row.Role === 'admin' ? 'security' : 'person'">
                                     {{ props.row.Role.toUpperCase() }}
                                 </q-chip>
                             </template>
@@ -114,8 +117,7 @@ def students_edit():
                     </q-td>
                 ''')
                 
-                # Slot Paquete: Icono de caja
-                # Pasamos pack_of_classes a JS usando f-string
+                # Slot Paquete
                 table.add_slot('body-cell-Package', f'''
                     <q-td :props="props">
                         <q-select
@@ -134,7 +136,7 @@ def students_edit():
                     </q-td>
                 ''')
 
-                # Slot Status: Punto Verde/Rojo
+                # Slot Status
                 table.add_slot('body-cell-Status', '''
                     <q-td :props="props">
                         <q-select
@@ -163,56 +165,79 @@ def students_edit():
                 selection_handler, selection_state = make_selection_handler(table, logger=logger)
                 table.on('selection', selection_handler)
 
-                # --- LÓGICA DE GUARDADO ---
-                def save_changes():
-                    session_save = SQLiteSession()
+                # --- LÓGICA DE GUARDADO (NEON -> SQLITE) ---
+                async def save_changes():
+                    ui.notify("Guardando cambios...", type='ongoing', timeout=1000)
+                    
+                    current_rows = table.rows
+                    # Lista de usuarios que QUEDAN en la tabla (los que no están aquí, se borraron)
+                    current_usernames = [row['Usuario'] for row in current_rows if row.get('Usuario')]
+
+                    # --- FASE 1: NEON (POSTGRES) ---
+                    pg_session = PostgresSession()
                     try:
-                        ui.notify("Guardando cambios...", type='ongoing', timeout=1000)
-                        
-                        current_rows = table.rows
-                        current_usernames = [row['Usuario'] for row in current_rows if row.get('Usuario')]
-
-                        # 1. Borrar eliminados
-                        users_to_delete = session_save.query(User).filter(
+                        # 1. Borrar usuarios que ya no están en la lista (eliminados en UI)
+                        # Nota: Protegemos a los admins para no auto-borrarse por error
+                        pg_session.query(User).filter(
                             User.username.notin_(current_usernames),
-                            User.role != 'admin' # Protección extra para admins
-                        ).all()
-                        
-                        for u in users_to_delete:
-                            session_save.delete(u)
+                            User.role != 'admin' 
+                        ).delete(synchronize_session=False)
 
-                        # 2. Actualizar/Crear
+                        # 2. Actualizar usuarios existentes
                         for row in current_rows:
                             u_name = row.get('Usuario')
                             if not u_name: continue
 
-                            user_db = session_save.query(User).filter(User.username == u_name).first()
-                            if not user_db:
-                                user_db = User(username=u_name)
-                                session_save.add(user_db)
-                            
-                            user_db.name = row.get('Name', '')
-                            user_db.surname = row.get('Surname', '')
-                            user_db.role = row.get('Role', 'client')
-                            user_db.package = row.get('Package', 'None')
-                            # user_db.status = row.get('Status', 'Active')
-
-                        session_save.commit()
+                            user_db = pg_session.query(User).filter(User.username == u_name).first()
+                            if user_db:
+                                # Actualizamos solo campos editables
+                                user_db.role = row.get('Role', 'client')
+                                user_db.package = row.get('Package', 'None')
+                                user_db.status = row.get('Status', 'Active')
+                                # No actualizamos nombre/apellido aquí porque no hay inputs para eso en la tabla
                         
-                        # Sincronización
-                        try:
-                            sync_sqlite_to_postgres_edit()
-                        except Exception as e:
-                            logger.error(f"Error sync: {e}")
-
-                        ui.notify("Base de datos actualizada correctamente.", type='positive', icon='cloud_done')
-                        ui.timer(1.0, lambda: ui.navigate.to('/Students'))
+                        pg_session.commit()
+                        logger.info("✅ Cambios masivos guardados en NEON")
 
                     except Exception as e:
-                        session_save.rollback()
-                        ui.notify(f"Error crítico: {str(e)}", type='negative')
+                        pg_session.rollback()
+                        logger.error(f"❌ Error Neon: {e}")
+                        ui.notify(f"Error guardando en la nube: {e}", type='negative')
+                        return # Abortar si falla la nube
                     finally:
-                        session_save.close()
+                        pg_session.close()
+
+                    # --- FASE 2: SQLITE (RESPALDO) ---
+                    try:
+                        sqlite_session = BackupSession()
+                        
+                        # 1. Borrar en local
+                        sqlite_session.query(User).filter(
+                            User.username.notin_(current_usernames),
+                            User.role != 'admin'
+                        ).delete(synchronize_session=False)
+
+                        # 2. Actualizar en local
+                        for row in current_rows:
+                            u_name = row.get('Usuario')
+                            if not u_name: continue
+
+                            user_sq = sqlite_session.query(User).filter(User.username == u_name).first()
+                            if user_sq:
+                                user_sq.role = row.get('Role', 'client')
+                                user_sq.package = row.get('Package', 'None')
+                                user_sq.status = row.get('Status', 'Active')
+                        
+                        sqlite_session.commit()
+                        logger.info("💾 Cambios masivos replicados en SQLITE")
+
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error en backup local: {e}")
+                    finally:
+                        sqlite_session.close()
+
+                    ui.notify("Base de datos actualizada correctamente.", type='positive', icon='cloud_done')
+                    ui.timer(1.0, lambda: ui.navigate.to('/Students'))
 
                 # Footer de Tarjeta con Botón Guardar
                 with ui.row().classes('w-full bg-gray-50 p-4 border-t border-gray-200 justify-end'):

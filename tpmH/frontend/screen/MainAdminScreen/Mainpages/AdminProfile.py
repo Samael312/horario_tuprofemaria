@@ -1,7 +1,9 @@
 import pandas as pd
 from nicegui import ui, app
 from components.headerAdmin import create_admin_screen
-from db.sqlite_db import SQLiteSession
+# --- CAMBIO IMPORTANTE: Usamos Postgres para leer datos reales ---
+from db.postgres_db import PostgresSession
+# ---------------------------------------------------------------
 from db.models import User, ScheduleProf, AsignedClasses, ScheduleProfEsp
 from components.delete_all import confirm_delete
 
@@ -29,13 +31,15 @@ def profileAdmin():
             # FAB (Menú de opciones)
             with ui.fab(icon='settings', label='Ajustes').props('color=pink-600 glossary ="settings" direction="left"'):
                 ui.fab_action(icon='edit', label='Editar Perfil', on_click=lambda: ui.navigate.to('/profileA_edit'), color='blue')
+                # Este confirm_delete ya fue actualizado para borrar de Neon primero
                 ui.fab_action(icon='delete_forever', label='Eliminar Cuenta', on_click=confirm_delete, color='red')
 
-        session = SQLiteSession()
+        # --- CONEXIÓN A NEON (NUBE) ---
+        session = PostgresSession()
         try:
             user_obj = session.query(User).filter(User.username == username).first()
             if not user_obj:
-                ui.notify("Error: Usuario no encontrado en base de datos", type='negative')
+                ui.notify("Error: Usuario no encontrado en la nube", type='negative')
                 return
 
             # 2. Tarjeta de Datos Personales
@@ -58,10 +62,10 @@ def profileAdmin():
                     info_item("Correo", getattr(user_obj, 'email', 'N/A'), "email")
                     info_item("Zona Horaria", getattr(user_obj, 'time_zone', 'N/A'), "schedule")
                     
-                    # Paquete (Consulta extra para mostrarlo aquí si existe en assigned)
-                    rgh_obj = session.query(AsignedClasses).filter(AsignedClasses.username == username).first()
-                    package_txt = rgh_obj.package if rgh_obj else "Sin asignar"
-                    #info_item("Paquete Activo", package_txt, "inventory_2")
+                    # Paquete (Opcional, si el admin también se asigna paquetes a sí mismo)
+                    # rgh_obj = session.query(AsignedClasses).filter(AsignedClasses.username == username).first()
+                    # package_txt = rgh_obj.package if rgh_obj else "Sin asignar"
+                    # info_item("Paquete Activo", package_txt, "inventory_2")
 
 
             # 3. Sección de Tablas (Tabs)
@@ -69,7 +73,7 @@ def profileAdmin():
                 
                 with ui.tabs().classes('w-full text-gray-600 bg-gray-50 border-b border-gray-200') \
                     .props('active-color="pink-600" indicator-color="pink-600" align="justify"') as tabs:
-                    t_classes = ui.tab('Clases Pendientes', icon='pending_actions') # Icono actualizado
+                    t_classes = ui.tab('Clases Pendientes', icon='pending_actions')
                     t_general = ui.tab('Horario General', icon='update')
                     t_specific = ui.tab('Fechas Específicas', icon='event_note')
 
@@ -77,8 +81,12 @@ def profileAdmin():
                     
                     # --- PANEL 1: CLASES ASIGNADAS (PENDIENTES) ---
                     with ui.tab_panel(t_classes).classes('p-6'):
-                        # CORRECCIÓN: Filtramos por Usuario Y Status='Pendiente'
+                        # Filtramos por status='Pendiente' (o lo que aplique para tu lógica de admin)
+                        # Si quieres ver TODAS las clases del sistema pendientes, quita el filtro de username
+                        # Si quieres ver solo las asignadas AL admin, deja el username.
+                        # Asumo que quieres ver las asignadas a este usuario admin específicamente.
                         assigned_data = session.query(AsignedClasses).filter(
+                            AsignedClasses.username == username,
                             AsignedClasses.status == 'Pendiente'
                         ).all()
                         

@@ -8,6 +8,7 @@ from components.botones.button_dur import make_add_hour_button
 from components.botones.button_fecha import make_add_hours_by_date_button
 from components.h_selection import make_selection_handler
 from components.delete_rows import delete_selected_rows_v2
+# Importar nuestros componentes de guardado "Inteligentes" (Neon -> SQLite)
 from components.save.save_rgo import create_save_schedule_button
 from components.save.save_asg import create_save_asgn_classes
 

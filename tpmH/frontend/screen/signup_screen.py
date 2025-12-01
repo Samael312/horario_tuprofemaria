@@ -1,10 +1,13 @@
 from fastapi.responses import RedirectResponse
 from nicegui import app, ui
-from db.sqlite_db import SQLiteSession
-from db.models import User
-from auth.sync import sync_sqlite_to_postgres
 from passlib.hash import pbkdf2_sha256
 import zoneinfo
+
+# --- NUEVOS IMPORTS PARA LA NUEVA LÓGICA ---
+from db.models import User
+from db.postgres_db import PostgresSession  # Para consultar si ya existe en la nube
+from db.services import create_user_service # Para guardar (Nube + Backup)
+# -------------------------------------------
 
 # =====================================================
 # CONFIGURACIÓN
@@ -53,7 +56,7 @@ def create_signup_screen():
 
     def render_signup_content():
         
-        # --- LÓGICA DE REGISTRO ---
+        # --- LÓGICA DE REGISTRO ACTUALIZADA ---
         def try_signup():
             # Obtener valores limpios
             data = {
@@ -65,53 +68,60 @@ def create_signup_screen():
                 't': time_zone.value
             }
 
-            # Validación básica
+            # Validación básica de campos vacíos
             if not all(data.values()):
                 ui.notify('Por favor, completa todos los campos obligatorios.', type='warning', icon='warning')
                 return
 
-            session = SQLiteSession()
+            # 1. VALIDACIÓN EN LA NUBE (Postgres es la fuente de la verdad)
+            # Abrimos sesión SOLO para leer y verificar si ya existe
+            session_check = PostgresSession()
             try:
-                # Validaciones de unicidad
-                if session.query(User).filter_by(username=data['u']).first():
+                if session_check.query(User).filter_by(username=data['u']).first():
                     ui.notify("El nombre de usuario ya está en uso.", type='negative', icon='error')
-                    username.props('error error-message="Usuario no disponible"') # Feedback visual en el input
+                    username.props('error error-message="Usuario no disponible"') 
                     return
                 
-                if session.query(User).filter_by(email=data['e']).first():
+                if session_check.query(User).filter_by(email=data['e']).first():
                     ui.notify("Este correo ya está registrado.", type='negative', icon='mail_lock')
                     email.props('error error-message="Email registrado"')
                     return
+            except Exception as e:
+                # Si falla la conexión a Neon al verificar
+                ui.notify("Error de conexión con el servidor. Intenta más tarde.", type='negative')
+                print(f"Error check user: {e}")
+                return
+            finally:
+                session_check.close()
 
-                # Crear usuario
+            # 2. CREACIÓN DEL USUARIO (Usando el nuevo servicio seguro)
+            try:
+                # Preparamos el diccionario para el modelo
                 password_hash = pbkdf2_sha256.hash(data['p'])
-                new_user = User(
-                    username=data['u'],
-                    name=data['n'], 
-                    surname=data['s'],
-                    email=data['e'], 
-                    role="client",
-                    time_zone=data['t'],
-                    password_hash=password_hash
-                )
-                session.add(new_user)
-                session.commit()
                 
+                user_dict = {
+                    'username': data['u'],
+                    'name': data['n'],
+                    'surname': data['s'],
+                    'email': data['e'],
+                    'role': "client",
+                    'time_zone': data['t'],
+                    'password_hash': password_hash,
+                    'status': "Active"
+                }
+
+                # LLAMADA AL SERVICIO (Guarda en Neon -> Respalda en SQLite)
+                create_user_service(user_dict)
+                
+                # Éxito
                 ui.notify("¡Cuenta creada con éxito! Redirigiendo...", type='positive', icon='check_circle')
                 
-                # Sincronización (Manejo de errores silencioso para no bloquear al usuario)
-                try:
-                    sync_sqlite_to_postgres()
-                except Exception as e:
-                    print(f"Error sync: {e}")
-
                 # Redirigir tras breve pausa
                 ui.timer(1.5, lambda: ui.navigate.to('/login'))
 
             except Exception as e:
-                ui.notify(f"Error del servidor: {str(e)}", type='negative')
-            finally:
-                session.close()
+                # Si create_user_service lanza error, es porque falló Neon (crítico)
+                ui.notify(f"No se pudo crear el usuario: {str(e)}", type='negative')
 
         # --- DISEÑO DEL FORMULARIO ---
         with ui.card().classes('w-full max-w-2xl p-8 shadow-xl rounded-2xl bg-white border border-gray-100'):
