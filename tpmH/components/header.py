@@ -23,7 +23,7 @@ def create_main_screen():
                     .classes('text-white font-medium hover:bg-white/20 transition-all duration-300 rounded-lg px-3')
 
             nav_btn('Inicio', '/mainscreen', 'home')
-            nav_btn('Editor', '/ScheduleMaker', 'edit_calendar')
+            nav_btn('Horario', '/ScheduleMaker', 'edit_calendar')
             nav_btn('Mis Clases', '/myclasses', 'school')
             
             # Separador vertical pequeño

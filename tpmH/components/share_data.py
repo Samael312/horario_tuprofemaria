@@ -4,6 +4,15 @@ days_of_week = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domi
 duration_options = ['30 minutos', '1 hora']
 availability_options = ['Ocupado', 'Libre']
 pack_of_classes = ["Plan1", "Plan2", "Plan3"]
+PACKAGE_LIMITS = {
+
+    "Plan1":4,
+    "Plan2":8,
+    "Plan3":12,
+    "": 0, # Sin paquete
+    "None": 0
+
+}
 
 max_days_per_plan = {"Plan1": 1, "Plan2": 2, "Plan3": 3}
 max_classes_per_plan = {"Plan1": 1, "Plan2": 1, "Plan3": 3}
