@@ -56,7 +56,7 @@ if __name__ in {'__main__', '__mp_main__'}:
     # Iniciar servidor
     ui.run(
         title="Tuprofemaria: Tu clase, tu ritmo, tu ingles", 
-        reload=False, 
+        reload=True, 
         storage_secret='maria_2025_horarios_secret_key_!@#987',
         favicon=favicon_path, 
         host='0.0.0.0', 
