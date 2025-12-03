@@ -86,7 +86,6 @@ def profileAdmin():
                         # Si quieres ver solo las asignadas AL admin, deja el username.
                         # Asumo que quieres ver las asignadas a este usuario admin específicamente.
                         assigned_data = session.query(AsignedClasses).filter(
-                            AsignedClasses.username == username,
                             AsignedClasses.status == 'Pendiente'
                         ).all()
                         
