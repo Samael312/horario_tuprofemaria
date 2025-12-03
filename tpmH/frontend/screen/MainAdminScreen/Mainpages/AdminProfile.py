@@ -31,6 +31,7 @@ def profileAdmin():
             # FAB (Menú de opciones)
             with ui.fab(icon='settings', label='Ajustes').props('color=pink-600 glossary ="settings" direction="left"'):
                 ui.fab_action(icon='edit', label='Editar Perfil', on_click=lambda: ui.navigate.to('/profileA_edit'), color='blue')
+                ui.fab_action(icon= 'public', label='Perfil Público', on_click=lambda: ui.navigate.to('/teacher_edit'), color='orange')
                 # Este confirm_delete ya fue actualizado para borrar de Neon primero
                 ui.fab_action(icon='delete_forever', label='Eliminar Cuenta', on_click=confirm_delete, color='red')
 

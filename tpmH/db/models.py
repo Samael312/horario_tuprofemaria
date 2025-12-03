@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
+import json
+from sqlalchemy.types import JSON
 
 Base = declarative_base()
 
@@ -65,3 +67,19 @@ class ScheduleProfEsp(Base):
     start_time = Column(Integer, unique=False)
     end_time = Column(Integer, unique=False)
     avai= Column(String, unique=False, default='Available')
+
+class TeacherProfile(Base):
+    __tablename__ = "teacher_profile"
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=False)
+    name = Column(String, unique=False)
+    surname = Column(String, unique=False)
+    bio = Column(String, unique=False)
+    photo = Column(String, unique=False)
+    title = Column(String, unique=False)
+    skills = Column(JSON, unique=False)
+    video = Column(String, unique=False)
+    gallery = Column(JSON, unique=False)
+    certificates = Column(JSON, unique=False)
+    social_links = Column(JSON, unique=False)
+    reviews = Column(JSON, unique=False)

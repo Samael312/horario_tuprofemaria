@@ -65,7 +65,7 @@ def students_edit():
             session = PostgresSession()
             try:
                 # Cargar Datos de la nube
-                student_data = session.query(User).filter(User.role != 'admin').all()
+                student_data = session.query(User).all()
 
                 rows = [{
                     'Usuario': s.username,

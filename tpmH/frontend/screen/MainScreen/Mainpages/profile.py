@@ -5,6 +5,7 @@ from db.postgres_db import PostgresSession
 # --------------------------------------------------
 from db.models import User, SchedulePref, AsignedClasses
 from components.delete_all import confirm_delete
+from sqlalchemy import or_
 
 @ui.page('/profile')
 def profile():
@@ -115,7 +116,11 @@ def profile():
 
                     # --- TAB 2: CLASES ASIGNADAS ---
                     with ui.tab_panel(t_assigned):
-                        assigned_data = session.query(AsignedClasses).filter(AsignedClasses.username == username).all()
+                        assigned_data = session.query(AsignedClasses).filter(AsignedClasses.username == username,or_(
+                                AsignedClasses.status == 'Pendiente',
+                                AsignedClasses.status == 'Agendada'
+                            )
+                        ).all()
                         
                         if not assigned_data:
                             with ui.column().classes('w-full items-center justify-center py-8 text-gray-400'):

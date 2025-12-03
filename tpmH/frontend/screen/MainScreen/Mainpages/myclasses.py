@@ -1,6 +1,7 @@
 from nicegui import ui, app
 from datetime import datetime
 import logging
+from db.sqlite_db import BackupSession
 
 # --- IMPORTS DE BASE DE DATOS ---
 from db.postgres_db import PostgresSession
@@ -64,11 +65,44 @@ def my_classes():
     async def cancel_class(c_id, dialog):
         session = PostgresSession()
         try:
-            session.query(AsignedClasses).filter(AsignedClasses.id == c_id).delete()
-            session.commit()
-            ui.notify('Clase cancelada exitosamente', type='positive', icon='check')
-            dialog.close()
-            refresh_ui() # Recargar la interfaz
+            # 1. Primero buscamos la clase para obtener sus datos antes de borrarla
+            # Necesitamos estos datos para encontrar la coincidencia en SQLite
+            class_to_delete = session.query(AsignedClasses).filter(AsignedClasses.id == c_id).first()
+            
+            if class_to_delete:
+                # Guardamos los datos clave en variables temporales
+                c_username = class_to_delete.username
+                c_date = class_to_delete.date
+                c_start_time = class_to_delete.start_time
+                
+                # 2. Borramos de Postgres
+                session.delete(class_to_delete)
+                session.commit()
+
+                # 3. Backup SQLite (CORREGIDO)
+                # Ahora usamos los datos guardados para borrar también en el respaldo
+                try:
+                    bk_sess = BackupSession()
+                    bk_cls = bk_sess.query(AsignedClasses).filter(
+                        AsignedClasses.username == c_username,
+                        AsignedClasses.date == c_date,
+                        AsignedClasses.start_time == c_start_time
+                    ).first()
+                    
+                    if bk_cls:
+                        bk_sess.delete(bk_cls)
+                        bk_sess.commit()
+                    
+                    bk_sess.close()
+                except Exception as e:
+                    logger.error(f"Error backup sqlite delete: {e}")
+
+                ui.notify('Clase cancelada exitosamente', type='positive', icon='check')
+                dialog.close()
+                refresh_ui() # Recargar la interfaz
+            else:
+                ui.notify("No se encontró la clase a cancelar.", type='warning')
+                
         except Exception as e:
             ui.notify(f"Error al cancelar: {e}", type='negative')
         finally:

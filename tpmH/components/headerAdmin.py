@@ -25,7 +25,7 @@ def create_admin_screen():
             nav_btn('Horario', '/Admhorario')
             nav_btn('Mis Clases', '/myclassesAdmin')
             nav_btn('Estudiantes', '/Students')
-            
+            nav_btn('Perfil Público', '/teacher')
 
             ui.element('div').classes('w-[1px] h-6 bg-pink-300 mx-2')
 
