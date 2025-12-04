@@ -640,12 +640,14 @@ def my_classesAdmin():
             
             # HEADER
             with ui.row().classes('w-full justify-between items-center'):
-                with ui.column().classes('gap-0'):
-                    ui.label('Gestión de Clases').classes('text-2xl font-bold text-slate-800')
-                    with ui.row().classes('items-center gap-1'):
-                        ui.icon('public', size='xs', color='rose')
-                        ui.label('Horarios convertidos a tu zona local').classes('text-sm text-rose-500 font-medium')
-                
+                with ui.row().classes('items-center gap-2'):
+                    ui.icon('book', size='lg', color='pink-600')
+                    with ui.column().classes('gap-0'):
+                        ui.label('Gestión de Clases').classes('text-2xl font-bold text-slate-800')
+                        with ui.row().classes('items-center gap-1'):
+                            ui.icon('public', size='xs', color='rose')
+                            ui.label('Horarios convertidos a tu zona local').classes('text-sm text-rose-500 font-medium')
+                    
                 ui.button(icon='refresh', on_click=refresh_ui).props('flat round color=slate')
 
             # STATS

@@ -1,6 +1,6 @@
 ﻿import logging
 import os
-from nicegui import ui
+from nicegui import ui, app # <--- IMPORTANTE: Importamos 'app'
 
 from dotenv import load_dotenv  
 from frontend.ui import init_ui
@@ -15,14 +15,18 @@ import db.sqlite_db
 # =====================================================
 # PRE-CONFIGURACIÓN 
 # =====================================================
+# Esta es la ruta base de tu proyecto (donde está main.py)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Rutas importantes
 db_dir = os.path.join(BASE_DIR, 'db')
+components_dir = os.path.join(BASE_DIR, 'components') # <--- Ruta a tus recursos
+
 os.makedirs(db_dir, exist_ok=True)
 
 # =====================================================
 # LOGGING
 # =====================================================
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -35,6 +39,14 @@ logger = logging.getLogger(__name__)
 
 def main():
     """Inicializa la aplicación NiceGUI."""
+    
+    # --- CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (CRÍTICO) ---
+    # Esto le dice a NiceGUI: "Todo lo que esté en 'components_dir', 
+    # sírvelo en la web cuando pidan '/static'"
+    app.add_static_files('/static', components_dir)
+    logger.info(f"📂 Carpeta estática servida: {components_dir}")
+    # -----------------------------------------------------
+
     logger.info("Inicializando aplicación UI")
     init_ui()
     logger.info("Aplicación iniciada correctamente")
