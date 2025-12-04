@@ -86,9 +86,13 @@ def profileAdmin():
                         # Si quieres ver TODAS las clases del sistema pendientes, quita el filtro de username
                         # Si quieres ver solo las asignadas AL admin, deja el username.
                         # Asumo que quieres ver las asignadas a este usuario admin específicamente.
-                        assigned_data = session.query(AsignedClasses).filter(
-                            AsignedClasses.status == 'Pendiente'
-                        ).all()
+                        status_classes = ['Pendiente', 'Prueba_Pendiente']
+
+                        assigned_data = (
+                            session.query(AsignedClasses)
+                            .filter(AsignedClasses.status.in_(status_classes))
+                            .all()
+                        )
                         
                         if not assigned_data:
                             show_empty_state("No tienes clases pendientes de aprobación.")
@@ -96,7 +100,7 @@ def profileAdmin():
                             df_assigned = pd.DataFrame([{
                                 'Fecha': a.date,
                                 'Día': a.days,
-                                'Hora': f"{str(a.start_time).zfill(4)[:2]}:{str(a.start_time).zfill(4)[2:]} - {str(a.end_time).zfill(4)[:2]}:{str(a.end_time).zfill(4)[2:]}",
+                                'Hora': f"{str(a.start_prof_time).zfill(4)[:2]}:{str(a.start_prof_time).zfill(4)[2:]} - {str(a.end_prof_time).zfill(4)[:2]}:{str(a.end_prof_time).zfill(4)[2:]}",
                                 'Estudiante': f"{a.name} {a.surname}",
                                 'Status': a.status
                             } for a in assigned_data])

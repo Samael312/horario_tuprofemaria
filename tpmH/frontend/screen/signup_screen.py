@@ -7,6 +7,7 @@ import zoneinfo
 from db.models import User
 from db.postgres_db import PostgresSession  # Para consultar si ya existe en la nube
 from db.services import create_user_service # Para guardar (Nube + Backup)
+from components.share_data import PACKAGE_LIMITS # IMPORTANTE: Para obtener los límites
 # -------------------------------------------
 
 # =====================================================
@@ -65,16 +66,16 @@ def create_signup_screen():
                 'e': email.value.strip(),
                 'n': name.value.strip(),
                 's': surname.value.strip(),
-                't': time_zone.value
+                't': time_zone.value,
+                'pkg': package_select.value # Nuevo campo
             }
 
             # Validación básica de campos vacíos
             if not all(data.values()):
-                ui.notify('Por favor, completa todos los campos obligatorios.', type='warning', icon='warning')
+                ui.notify('Por favor, completa todos los campos obligatorios (incluyendo el Plan).', type='warning', icon='warning')
                 return
 
             # 1. VALIDACIÓN EN LA NUBE (Postgres es la fuente de la verdad)
-            # Abrimos sesión SOLO para leer y verificar si ya existe
             session_check = PostgresSession()
             try:
                 if session_check.query(User).filter_by(username=data['u']).first():
@@ -87,16 +88,24 @@ def create_signup_screen():
                     email.props('error error-message="Email registrado"')
                     return
             except Exception as e:
-                # Si falla la conexión a Neon al verificar
                 ui.notify("Error de conexión con el servidor. Intenta más tarde.", type='negative')
                 print(f"Error check user: {e}")
                 return
             finally:
                 session_check.close()
 
-            # 2. CREACIÓN DEL USUARIO (Usando el nuevo servicio seguro)
+            # 2. CREACIÓN DEL USUARIO CON JSON DE PAGOS AUTOMÁTICO
             try:
-                # Preparamos el diccionario para el modelo
+                # A. Calcular el límite según el paquete seleccionado
+                limit = PACKAGE_LIMITS.get(data['pkg'], 0)
+
+                # B. Generar el JSON automático
+                payment_json = {
+                    "Clases_paquete": f"0/{limit}", # Formato: Pagadas/Límite
+                    "Clases_totales": 0             # Inicializado en 0
+                }
+
+                # C. Preparar diccionario
                 password_hash = pbkdf2_sha256.hash(data['p'])
                 
                 user_dict = {
@@ -107,7 +116,9 @@ def create_signup_screen():
                     'role': "client",
                     'time_zone': data['t'],
                     'password_hash': password_hash,
-                    'status': "Active"
+                    'status': "Active",
+                    'package': data['pkg'],        # Guardamos el plan elegido
+                    'payment_info': payment_json   # Guardamos el JSON generado
                 }
 
                 # LLAMADA AL SERVICIO (Guarda en Neon -> Respalda en SQLite)
@@ -115,12 +126,9 @@ def create_signup_screen():
                 
                 # Éxito
                 ui.notify("¡Cuenta creada con éxito! Redirigiendo...", type='positive', icon='check_circle')
-                
-                # Redirigir tras breve pausa
                 ui.timer(1.5, lambda: ui.navigate.to('/login'))
 
             except Exception as e:
-                # Si create_user_service lanza error, es porque falló Neon (crítico)
                 ui.notify(f"No se pudo crear el usuario: {str(e)}", type='negative')
 
         # --- DISEÑO DEL FORMULARIO ---
@@ -162,6 +170,16 @@ def create_signup_screen():
                     value='UTC' 
                 ).classes('w-full').props('outlined dense use-input input-debounce="0" behavior="menu"')
                 time_zone.add_slot('prepend', '<q-icon name="schedule" />')
+
+                # SELECCIÓN DE PAQUETE (Nuevo)
+                # Obtenemos las opciones de las llaves de PACKAGE_LIMITS
+                package_options = list(PACKAGE_LIMITS.keys())
+                package_select = ui.select(
+                    options=package_options,
+                    label='Elige tu Plan',
+                    value=package_options[0] if package_options else None
+                ).classes('w-full col-span-2').props('outlined dense') # col-span-2 para que ocupe todo el ancho
+                package_select.add_slot('prepend', '<q-icon name="inventory_2" />')
 
             # Footer con Botón
             with ui.column().classes('w-full mt-8 gap-3'):

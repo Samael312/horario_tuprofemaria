@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
-import json
 from sqlalchemy.types import JSON
 
 Base = declarative_base()
@@ -12,11 +11,16 @@ class User(Base):
     name = Column(String, unique=False)
     surname = Column(String, unique=False)
     email = Column(String, unique=True)
-    role = Column(String, unique= False, default= "client")
-    time_zone = Column(String, unique=False)
-    package = Column(String, unique=False, default= "") 
+    role = Column(String, unique=False, default="client")
+    time_zone = Column(String, unique=False, default="UTC") # Zona horaria del usuario
+    package = Column(String, unique=False, default="") 
     status = Column(String, unique=False, default="Active")
     password_hash = Column(String)
+    class_count = Column(String, unique=False) # Ej: "1/12", "5/8"
+    total_classes = Column(Integer, unique=False, default=0)
+    payment_info = Column(JSON, unique=False) # Información de pago (puede ser JSON)
+    price = Column(Integer, unique=False, default=10) # Precio del plan
+
 
 class SchedulePref(Base):
     __tablename__ = "rangos_horarios"
@@ -26,9 +30,14 @@ class SchedulePref(Base):
     surname = Column(String, unique=False)
     duration = Column(String, unique=False)
     days = Column(String, unique=False)
+    # Horario Estudiante (Local)
     start_time = Column(Integer, unique=False)
     end_time = Column(Integer, unique=False)
+    # Horario Profesora (Calculado)
+    start_prof_time = Column(Integer, unique=False) # NUEVO
+    end_prof_time = Column(Integer, unique=False)   # NUEVO
     package = Column(String, unique=False)
+
 
 class AsignedClasses(Base):
     __tablename__ = "clases_asignadas"
@@ -36,14 +45,22 @@ class AsignedClasses(Base):
     username = Column(String, unique=False)
     name = Column(String, unique=False)
     surname = Column(String, unique=False)
-    date= Column(String, unique=False)
+    date = Column(String, unique=False) # Fecha del estudiante
     duration = Column(String, unique=False)
     days = Column(String, unique=False)
+    # Horario Estudiante (Local)
     start_time = Column(Integer, unique=False)
     end_time = Column(Integer, unique=False)
+    # Horario Profesora (Calculado)
+    start_prof_time = Column(Integer, unique=False) # NUEVO
+    end_prof_time = Column(Integer, unique=False)   # NUEVO
+    # Fecha Profesora (Puede cambiar si hay diferencia grande de zona)
+    date_prof = Column(String, unique=False)        # NUEVO (Recomendado)
     package = Column(String, unique=False)
     status = Column(String, unique=False, default="Pendiente")
-
+    class_count = Column(String, unique=False) # Ej: "1/12", "5/8"
+    total_classes = Column(Integer, unique=False, default=0)
+    payment_info = Column(JSON, unique=False) # Información de pago (puede ser JSON)
 
 class ScheduleProf(Base):
     __tablename__ = "horario_prof"
@@ -52,9 +69,10 @@ class ScheduleProf(Base):
     name = Column(String, unique=False)
     surname = Column(String, unique=False)
     days = Column(String, unique=False)
+    # Horario Profesora (Base)
     start_time = Column(Integer, unique=False)
     end_time = Column(Integer, unique=False)
-    availability= Column(String, unique=False, default='Available')
+    availability = Column(String, unique=False, default='Available')
 
 class ScheduleProfEsp(Base):
     __tablename__ = "horario_prof_esp"
@@ -64,9 +82,10 @@ class ScheduleProfEsp(Base):
     surname = Column(String, unique=False)
     date = Column(String, unique=False)
     days = Column(String, unique=False)
+    # Horario Profesora (Base)
     start_time = Column(Integer, unique=False)
     end_time = Column(Integer, unique=False)
-    avai= Column(String, unique=False, default='Available')
+    avai = Column(String, unique=False, default='Available')
 
 class TeacherProfile(Base):
     __tablename__ = "teacher_profile"

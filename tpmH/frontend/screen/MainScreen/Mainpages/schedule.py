@@ -9,6 +9,8 @@ from db.sqlite_db import BackupSession
 from db.models import User, ScheduleProf, ScheduleProfEsp, AsignedClasses, SchedulePref
 from components.header import create_main_screen
 from components.share_data import days_of_week, PACKAGE_LIMITS
+# IMPORTAMOS EL CONVERSOR (Si lo usas, sino puedes quitarlo)
+from components.timezone_converter import convert_student_to_teacher, get_slots_in_student_tz, from_int_time
 
 # Configuración de logger
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +61,17 @@ def scheduleMaker():
     # LÓGICA DE NEGOCIO (MODEL)
     # =================================================================
 
+    def get_user_timezone():
+        session = PostgresSession()
+        tz = "UTC"
+        try:
+            u = session.query(User).filter(User.username == username).first()
+            if u and u.time_zone:
+                tz = u.time_zone
+        finally:
+            session.close()
+        return tz
+
     def get_time_icon(minutes):
         if minutes < 720: return 'wb_sunny'
         elif minutes < 1020: return 'wb_twilight'
@@ -94,16 +107,13 @@ def scheduleMaker():
         if not user: return "Sin Plan", 0, 0
         pkg_name = user.package or "None"
         limit = PACKAGE_LIMITS.get(pkg_name, 0)
-        
         now = datetime.now()
         start_date_str = f"{now.year}-{str(now.month).zfill(2)}"
-        
         current_usage = session.query(AsignedClasses).filter(
             AsignedClasses.username == user_id,
             AsignedClasses.status != 'Cancelled',
             AsignedClasses.date.startswith(start_date_str)
         ).count()
-        
         return pkg_name, limit, current_usage
 
     def get_available_slots(date_str, duration_mins):
@@ -116,25 +126,30 @@ def scheduleMaker():
             if not rules:
                 rules = session.query(ScheduleProf).filter_by(days=day_name).all()
 
-            available_ranges = []
+            available_ranges_prof = []
             for r in rules:
                 status_bd = str(r.avai if hasattr(r, 'avai') else r.availability)
                 if status_bd in POSITIVE_STATUS:
-                    available_ranges.append((r.start_time, r.end_time))
+                    available_ranges_prof.append((r.start_time, r.end_time))
             
-            if not available_ranges: return [] 
+            if not available_ranges_prof: return [] 
 
             busy_classes = session.query(AsignedClasses).filter(
-                AsignedClasses.date == date_str,
+                AsignedClasses.date == date_str, 
                 AsignedClasses.status != 'Cancelled'
             ).all()
-            blocked_intervals = [(c.start_time, c.end_time) for c in busy_classes]
+            
+            blocked_intervals_prof = []
+            for c in busy_classes:
+                sp = c.start_prof_time if c.start_prof_time is not None else c.start_time
+                ep = c.end_prof_time if c.end_prof_time is not None else c.end_time
+                blocked_intervals_prof.append((sp, ep))
 
             def to_min(t): return int(str(t).zfill(4)[:2]) * 60 + int(str(t).zfill(4)[2:])
             def to_hhmm(mins): return int(f"{mins // 60}{str(mins % 60).zfill(2)}")
 
-            final_slots = []
-            for r_start, r_end in available_ranges:
+            prof_slots = []
+            for r_start, r_end in available_ranges_prof:
                 curr_min = to_min(r_start)
                 end_min = to_min(r_end)
                 
@@ -143,17 +158,21 @@ def scheduleMaker():
                     slot_end = curr_min + duration_mins
                     
                     is_blocked = False
-                    for b_start, b_end in blocked_intervals:
+                    for b_start, b_end in blocked_intervals_prof:
                         bs, be = to_min(b_start), to_min(b_end)
                         if (slot_start < be) and (slot_end > bs):
                             is_blocked = True; break
                     
                     if not is_blocked: 
-                        final_slots.append(to_hhmm(slot_start))
+                        prof_slots.append(to_hhmm(slot_start))
                     
                     curr_min += duration_mins 
             
-            return sorted(list(set(final_slots)))
+            student_tz = get_user_timezone()
+            final_student_slots = get_slots_in_student_tz(prof_slots, date_str, student_tz)
+            
+            return sorted(list(set(final_student_slots)))
+
         except Exception as e:
             logger.error(f"Error slots: {e}")
             return []
@@ -162,28 +181,64 @@ def scheduleMaker():
 
     async def book_class(slot_int):
         session = PostgresSession()
+        success = False 
         try:
+            # 1. OBTENER USO DEL PAQUETE
             pkg, limit, used = get_current_package_usage(session, username)
+            
             if limit > 0 and used >= limit:
                 ui.notify(f"Límite mensual alcanzado ({used}/{limit})", type='negative')
                 return
+            
+            # 1.1 OBTENER USO TOTAL HISTÓRICO (Solo para guardar en el registro de la clase)
+            total_lifetime_used = session.query(AsignedClasses).filter(
+                AsignedClasses.username == username,
+                AsignedClasses.status != 'Cancelled'
+            ).count()
+            new_total_classes_seq = total_lifetime_used + 1
 
             user_db = session.query(User).filter_by(username=username).first()
+            student_tz = user_db.time_zone or "UTC"
             duration = state['duration']
             
+            # Calcular horas
             s_str = str(slot_int).zfill(4)
-            start_dt_obj = datetime(2000, 1, 1, int(s_str[:2]), int(s_str[2:]))
+            sh, sm = int(s_str[:2]), int(s_str[2:])
+            start_dt_obj = datetime(2000, 1, 1, sh, sm)
             end_dt = start_dt_obj + timedelta(minutes=duration)
             end_int = int(end_dt.strftime("%H%M"))
             
             dt_obj = datetime.strptime(state['date'], '%Y-%m-%d')
             day_name = days_of_week[dt_obj.weekday()]
 
-            # --- CAMBIO: Status por defecto "Pendiente" ---
+            # Conversión zona horaria
+            sp_time, ep_time, prof_date = convert_student_to_teacher(
+                state['date'], slot_int, duration, student_tz
+            )
+
+            # Status
+            status_to_save = "Prueba_Pendiente" if state['is_trial'] else "Pendiente"
+
+            # --- 2. CALCULAR ETIQUETA DE CONTEO ---
+            current_class_num = used + 1
+            count_label = f"{current_class_num}/{limit}" if limit > 0 else f"{current_class_num}"
+
+            # --- IMPORTANTE: NO TOCAMOS LA TABLA USER ---
+            # El objeto user_db NO se modifica aquí. La actualización de sus contadores
+            # ocurrirá cuando la profesora complete/finalice la clase.
+
             new_class = AsignedClasses(
                 username=username, name=user_db.name, surname=user_db.surname,
-                date=state['date'], days=day_name, start_time=slot_int,
-                end_time=end_int, duration=str(duration), package=pkg, status="Pendiente"
+                date=state['date'], days=day_name, 
+                start_time=slot_int,
+                end_time=end_int, 
+                start_prof_time=sp_time,
+                end_prof_time=ep_time,
+                date_prof=prof_date,
+                duration=str(duration), package=pkg, 
+                status=status_to_save,
+                class_count=count_label,        # Se guarda solo en la clase
+                total_classes=new_total_classes_seq # Se guarda solo en la clase
             )
             session.add(new_class)
             session.commit()
@@ -194,18 +249,30 @@ def scheduleMaker():
                 bk_sess.add(AsignedClasses(
                     username=username, name=user_db.name, surname=user_db.surname,
                     date=state['date'], days=day_name, start_time=slot_int,
-                    end_time=end_int, duration=str(duration), package=pkg, status="Pendiente"
+                    end_time=end_int, duration=str(duration), package=pkg, 
+                    status=status_to_save,
+                    start_prof_time=sp_time, end_prof_time=ep_time, date_prof=prof_date,
+                    class_count=count_label,
+                    total_classes=new_total_classes_seq
                 ))
                 bk_sess.commit(); bk_sess.close()
             except: pass
 
             ui.notify("Clase agendada correctamente", type='positive', icon='check')
-            update_dashboard()
+            success = True
             
         except Exception as e:
             ui.notify(f"Error: {e}", type='negative')
+            success = False
         finally:
             session.close()
+
+        if success:
+            await asyncio.sleep(0.1) 
+            try:
+                update_dashboard()
+            except Exception as e:
+                logger.error(f"Error actualizando dashboard: {e}")
 
     # =================================================================
     # COMPONENTES DE INTERFAZ (VIEW)
@@ -216,11 +283,12 @@ def scheduleMaker():
         fmt_time = f"{t_str[:2]}:{t_str[2:]}"
         date_nice = datetime.strptime(state['date'], '%Y-%m-%d').strftime('%d %B %Y')
         duration = state['duration']
+        tipo_clase = "Clase de Prueba" if state['is_trial'] else "Clase Regular"
 
         with ui.dialog() as d, ui.card().classes('w-80 p-0 rounded-2xl overflow-hidden shadow-xl'):
             with ui.column().classes('w-full bg-slate-800 p-6 items-center'):
                 ui.icon('calendar_today', color='white', size='lg')
-                ui.label('Confirmar Reserva').classes('text-white font-bold mt-2')
+                ui.label(f'Confirmar {tipo_clase}').classes('text-white font-bold mt-2')
             
             with ui.column().classes('p-6 w-full items-center bg-white'):
                 ui.label(date_nice).classes('text-xs font-bold text-slate-400 uppercase tracking-widest')
@@ -252,7 +320,6 @@ def scheduleMaker():
 
         try:
             sel_dt = datetime.strptime(state['date'], '%Y-%m-%d')
-            # Obtenemos la fecha y hora actual para comparaciones
             now = datetime.now()
             current_hhmm = int(now.strftime("%H%M"))
             is_today = (sel_dt.date() == now.date())
@@ -288,17 +355,13 @@ def scheduleMaker():
                     is_preferred = is_in_user_range(slot, pref_ranges)
                     time_icon = get_time_icon(slot)
 
-                    # --- LÓGICA DE BLOQUEO POR HORA PASADA ---
-                    # Si es hoy y el slot es menor a la hora actual
                     is_past_hour = is_today and (slot < current_hhmm)
 
                     if is_past_hour:
-                        # Estilo Deshabilitado (Gris)
                         btn_classes = "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
                         btn_props = "disabled flat color=grey"
                         click_handler = None
                     else:
-                        # Estilos Normales
                         click_handler = lambda s=slot: render_booking_dialog(s)
                         btn_props = "unelevated color=None"
                         if is_preferred:
@@ -320,42 +383,29 @@ def scheduleMaker():
     def render_my_classes():
         session = PostgresSession()
         
-        # --- 1. ACTUALIZAR ESTADOS (Pendiente -> Finalizada) ---
-        # Si la fecha/hora ya pasó, marcamos como Finalizada
         now = datetime.now()
-        # Creamos un entero representativo del momento actual: YYYYMMDDHHMM
         now_int = int(now.strftime("%Y%m%d%H%M"))
         
-        # Buscamos clases pendientes del usuario
         pending_classes = session.query(AsignedClasses).filter(
             AsignedClasses.username == username,
-            AsignedClasses.status == 'Pendiente'
+            AsignedClasses.status.in_(['Pendiente', 'Prueba_Pendiente'])
         ).all()
         
         updates_made = False
         for c in pending_classes:
-            # Formato fecha clase: YYYYMMDD + HHMM (start_time)
-            # Usamos start_time para determinar si ya pasó el momento de inicio
             class_dt_int = int(c.date.replace('-', '') + str(c.start_time).zfill(4))
-            
             if class_dt_int < now_int:
                 c.status = 'Finalizada'
                 updates_made = True
         
         if updates_made:
             session.commit()
-            # Si hubo cambios, el dashboard general debería enterarse, 
-            # pero como estamos en refreshable se verá reflejado abajo.
 
-        # --- 2. MOSTRAR FUTURAS ---
-        # Volvemos a consultar solo las pendientes/agendadas (futuras)
-        # Nota: Filtramos status != Cancelled y status != Finalizada
         classes = session.query(AsignedClasses).filter(
             AsignedClasses.username == username, 
-            AsignedClasses.status == 'Pendiente' # Solo mostramos las pendientes
+            AsignedClasses.status.in_(['Pendiente', 'Prueba_Pendiente'])
         ).all()
         
-        # Ordenar por fecha
         classes.sort(key=lambda x: (x.date, x.start_time))
         session.close()
 
@@ -376,9 +426,23 @@ def scheduleMaker():
                         with ui.column().classes('items-center leading-none px-2'):
                             ui.label(dt.strftime('%d')).classes('text-xl font-white text-slate-700')
                             ui.label(dt.strftime('%b')).classes('text-[10px] font-bold uppercase text-slate-400')
+                           
+                        
                         with ui.column().classes('gap-0'):
-                            ui.label(f"{days_of_week[dt.weekday()]} - {fmt}").classes('font-bold text-slate-800 text-sm')
+                            with ui.row().classes('items-center gap-4 text-sm text-slate-500'):
+                                ui.label(f"{days_of_week[dt.weekday()]} - {fmt}").classes('font-bold text-slate-800 text-sm')
+                                if c.status == 'Prueba_Pendiente':
+                                    ui.label('Clase de Prueba').classes('mt-1 text-[10px] font-bold text-purple-600 uppercase bg-purple-100 px-2 py-0.5 rounded-full')   
+                                else:
+                                    ui.label('Clase Regular').classes('mt-1 text-[10px] font-bold text-rose-600 uppercase bg-rose-100 px-2 py-0.5 rounded-full')
+                                
+                                    # --- MOSTRAR EL CONTEO SI EXISTE ---
+                                if getattr(c, 'class_count', None):
+                                    ui.label(f"Clase {c.class_count}").classes('text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100')
+
                             ui.label(f'Inglés General ({dur_text})').classes('text-xs text-slate-500')
+                            
+                          
                     
                     ui.button(icon='close', on_click=lambda x=c: delete_class_dialog(x)).props('flat round dense color=slate size=sm').classes('opacity-0 group-hover:opacity-100 transition-opacity')
 
@@ -408,7 +472,6 @@ def scheduleMaker():
         session = PostgresSession()
         pkg, limit, used_curr = get_current_package_usage(session, username)
         
-        # Historial total (incluye finalizadas)
         total_lifetime = session.query(AsignedClasses).filter(
             AsignedClasses.username == username,
             AsignedClasses.status != 'Cancelled'
@@ -492,10 +555,14 @@ def scheduleMaker():
 
         with ui.row().classes('items-center justify-between w-full'):
             with ui.column().classes('gap-0'):
-                ui.label(main_title).classes('text-2xl font-bold text-slate-800')
-                ui.label().bind_text_from(state, 'date', 
-                    backward=lambda d: datetime.strptime(d, '%Y-%m-%d').strftime('%A, %d de %B') if d else "Cargando..."
-                ).classes(f'{sub_color} font-medium')
+                with ui.row().classes('w-full items-center justify-between mb-2 relative'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('book', size='lg', color='pink-600')
+                        with ui.column().classes('gap-0'):
+                            ui.label(main_title).classes('text-2xl font-bold text-slate-800')
+                            ui.label().bind_text_from(state, 'date', 
+                                backward=lambda d: datetime.strptime(d, '%Y-%m-%d').strftime('%A, %d de %B') if d else "Cargando..."
+                            ).classes(f'{sub_color} font-medium')
             
             with ui.row().classes('items-center gap-4'):
                 if not state['is_trial']:

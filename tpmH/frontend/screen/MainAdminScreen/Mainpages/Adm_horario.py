@@ -38,6 +38,7 @@ def adm_horario():
             ui.icon('calendar_month', size='lg', color='pink-600')
             with ui.column().classes('gap-0'):
                 ui.label('Gestión de Disponibilidad').classes('text-3xl font-bold text-gray-800')
+                ui.label('Configura tus horarios en tu hora local. El sistema los convertirá automáticamente para los estudiantes.').classes('text-xs text-rose-500 font-bold')
                 ui.label('Configura tus horarios generales o fechas específicas').classes('text-sm text-gray-500')
 
         # 3. Contenedor de Pestañas

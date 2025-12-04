@@ -9,8 +9,7 @@ PACKAGE_LIMITS = {
     "Plan1":4,
     "Plan2":8,
     "Plan3":12,
-    "": 0, # Sin paquete
-    "None": 0
+    "Ninguno": 0
 
 }
 

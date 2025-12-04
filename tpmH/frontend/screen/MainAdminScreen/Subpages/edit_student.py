@@ -40,7 +40,7 @@ def students_edit():
                 ui.icon('edit_note', size='lg', color='blue-600')
                 with ui.column().classes('gap-0'):
                     ui.label('Editor Masivo de Estudiantes').classes('text-3xl font-bold text-gray-800')
-                    ui.label('Modifica roles, paquetes y estados rápidamente').classes('text-sm text-gray-500')
+                    ui.label('Modifica roles, paquetes, precios y estados').classes('text-sm text-gray-500')
             
             # Botón Cancelar/Volver
             ui.button('Volver a Lista', on_click=lambda: ui.navigate.to('/Students')) \
@@ -73,7 +73,8 @@ def students_edit():
                     'Surname': s.surname,
                     'Role': getattr(s, 'role', 'client'),
                     'Package': getattr(s, 'package', 'None'),
-                    'Status': getattr(s, 'status', 'Active')
+                    'Status': getattr(s, 'status', 'Active'),
+                    'Price': getattr(s, 'price', 10) if getattr(s, 'price', None) is not None else 10 # <--- NUEVO CAMPO
                 } for s in student_data]
 
                 # Definir Columnas
@@ -83,6 +84,7 @@ def students_edit():
                     {'name': 'Surname', 'label': 'APELLIDO', 'field': 'Surname', 'align': 'left', 'sortable': True, 'headerClasses': 'bg-gray-100 font-bold'},
                     {'name': 'Role', 'label': 'ROL (EDIT)', 'field': 'Role', 'align': 'left', 'headerClasses': 'bg-blue-100 text-blue-900 font-bold'},
                     {'name': 'Package', 'label': 'PAQUETE (EDIT)', 'field': 'Package', 'align': 'left', 'headerClasses': 'bg-blue-100 text-blue-900 font-bold'},
+                    {'name': 'Price', 'label': 'PRECIO ($)', 'field': 'Price', 'align': 'left', 'headerClasses': 'bg-green-100 text-green-900 font-bold'}, # <--- NUEVA COLUMNA
                     {'name': 'Status', 'label': 'ESTADO (EDIT)', 'field': 'Status', 'align': 'left', 'headerClasses': 'bg-blue-100 text-blue-900 font-bold'},
                 ]
 
@@ -133,6 +135,20 @@ def students_edit():
                                 </div>
                             </template>
                         </q-select>
+                    </q-td>
+                ''')
+
+                # --- SLOT NUEVO: PRECIO ---
+                table.add_slot('body-cell-Price', '''
+                    <q-td :props="props">
+                        <q-input
+                            v-model.number="props.row.Price"
+                            type="number"
+                            dense borderless
+                            prefix="$"
+                            input-class="text-weight-bold text-green-800"
+                            @update:model-value="$parent.$emit('row-change', props.row)"
+                        />
                     </q-td>
                 ''')
 
@@ -194,7 +210,12 @@ def students_edit():
                                 user_db.role = row.get('Role', 'client')
                                 user_db.package = row.get('Package', 'None')
                                 user_db.status = row.get('Status', 'Active')
-                                # No actualizamos nombre/apellido aquí porque no hay inputs para eso en la tabla
+                                
+                                # Actualizar Precio (asegurando entero o float)
+                                try:
+                                    user_db.price = int(row.get('Price', 10))
+                                except:
+                                    user_db.price = 10
                         
                         pg_session.commit()
                         logger.info("✅ Cambios masivos guardados en NEON")
@@ -227,6 +248,10 @@ def students_edit():
                                 user_sq.role = row.get('Role', 'client')
                                 user_sq.package = row.get('Package', 'None')
                                 user_sq.status = row.get('Status', 'Active')
+                                try:
+                                    user_sq.price = int(row.get('Price', 10))
+                                except:
+                                    user_sq.price = 10
                         
                         sqlite_session.commit()
                         logger.info("💾 Cambios masivos replicados en SQLITE")
@@ -237,7 +262,7 @@ def students_edit():
                         sqlite_session.close()
 
                     ui.notify("Base de datos actualizada correctamente.", type='positive', icon='cloud_done')
-                    ui.timer(1.0, lambda: ui.navigate.to('/Students'))
+                    ui.navigate.to('/Students')
 
                 # Footer de Tarjeta con Botón Guardar
                 with ui.row().classes('w-full bg-gray-50 p-4 border-t border-gray-200 justify-end'):
