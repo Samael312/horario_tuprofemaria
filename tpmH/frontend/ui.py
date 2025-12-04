@@ -19,20 +19,23 @@ from frontend.screen.MainAdminScreen.Subpages.edit_student import students_edit
 from frontend.screen.MainAdminScreen.Subpages.editAdminProfile import profileA_edit
 from frontend.screen.MainAdminScreen.Subpages.teacher_edit import teacherAdmin
 from frontend.screen.MainScreen.Mainpages.teacher import teacher_profile_view
+from frontend.screen.mainpage import render_landing_page
 
 
 def init_ui():
     """Puente entre las pantallas de la app."""
+    setup_auth_system()       # Esto crea /login y registra el middleware
     
-    setup_auth_system() 
-
     # Página principal (solo accesible si el usuario está autenticado)
     @ui.page('/')
     def main_page():
         if not app.storage.user.get('authenticated', False):
-            ui.navigate.to('/login')
+            ui.navigate.to('/MainPage')  # Redirige a la página de inicio si no está autenticado
+        
             return
-
+        render_landing_page()
+        setup_auth_system() 
+        
         create_main_screen()  # delega la UI real a mainscreen.py
         create_signup_screen()  # delega la UI real a signup_screen.py
         reset_password_screen()  # delega la UI real a reset_screen.py
