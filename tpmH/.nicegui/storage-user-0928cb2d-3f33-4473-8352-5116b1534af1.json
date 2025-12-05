@@ -1,5 +1,1 @@
-<<<<<<< HEAD
-{"lang":"es","username":"sam12","authenticated":true,"role":"admin","name":"Samuel","surname":"Ali","email":"samuel.boscan.18@gmail.com","time_zone":"America/Caracas"}
-=======
-{}
->>>>>>> d1c28a64631750829f2956267b4bf4280a2958e2
+{"username":"sam12","authenticated":true,"role":"admin","name":"Samuel","surname":"Ali","email":"samuel.boscan.18@gmail.com","time_zone":"America/Caracas"}
