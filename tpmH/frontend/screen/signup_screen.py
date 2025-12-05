@@ -8,7 +8,7 @@ from typing import Optional, Dict
 from db.models import User
 from db.postgres_db import PostgresSession
 from db.services import create_user_service
-from components.share_data import PACKAGE_LIMITS
+from components.share_data import PACKAGE_LIMITS, t_val
 # -------------------------------------------
 
 # =====================================================
@@ -257,12 +257,14 @@ def render_signup_form():
             timezone_input.add_slot('prepend', '<q-icon name="schedule" />')
 
             # PAQUETES
-            package_options = list(PACKAGE_LIMITS.keys())
-            #package_options = [tp[k] for k in package_keys]
+            raw_keys = list(PACKAGE_LIMITS.keys()) # Lista: ['Básico', 'Personalizado'...]
+            package_options = {k: t_val(k, lang) for k in raw_keys} # Dict: {'Básico': 'Basic'...}
+            
+            # <--- AQUÍ ESTABA EL ERROR. Usamos raw_keys[0] en lugar de package_options[0]
             package_input = ui.select(
                 options=package_options,
                 label=t['label_plan'],
-                value=package_options[0] if package_options else None
+                value=raw_keys[0] if raw_keys else None 
             ).classes('w-full col-span-2').props('outlined dense')
             package_input.add_slot('prepend', '<q-icon name="inventory_2" />')
 

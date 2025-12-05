@@ -4,6 +4,9 @@ from components.header import create_main_screen
 from db.postgres_db import PostgresSession
 from db.models import User, SchedulePref, AsignedClasses
 from components.delete_all import confirm_delete
+# --- IMPORT NUEVO PARA TRADUCCIÓN DE DATOS ---
+from components.share_data import t_val 
+# ---------------------------------------------
 from sqlalchemy import or_
 import logging
 
@@ -105,11 +108,8 @@ def profile():
         
         # Validar usuario
         if not user_obj:
-            # Necesitamos un idioma default para el error si no cargó la UI
             lang_err = app.storage.user.get('lang', 'es')
             ui.notify(TRANSLATIONS[lang_err]['user_not_found'], type='negative')
-            # Importante: create_main_screen debe llamarse para tener header aunque haya error, 
-            # o hacer return inmediato. Aquí hacemos return.
             return
 
         # Consultas de Datos (Data Fetching)
@@ -186,6 +186,9 @@ def profile():
                     # 2. Tarjeta Paquete
                     with ui.card().classes('w-full p-0 shadow-md rounded-xl overflow-hidden border border-gray-100'):
                         if rgh_obj and rgh_obj.package:
+                            # ALCABALA: Traducir nombre del paquete (Ej: Básico -> Basic)
+                            pkg_display = t_val(rgh_obj.package, lang)
+
                             with ui.row().classes('w-full p-4 bg-pink-600 items-center justify-between'):
                                 with ui.row().classes('items-center gap-2'):
                                     ui.icon('card_membership', color='white')
@@ -193,7 +196,7 @@ def profile():
                                 ui.icon('verified', color='white')
                             
                             with ui.column().classes('w-full p-6 items-center text-center'):
-                                ui.label(rgh_obj.package).classes('text-2xl font-black text-gray-800 uppercase tracking-wide')
+                                ui.label(pkg_display).classes('text-2xl font-black text-gray-800 uppercase tracking-wide')
                                 ui.label(t['plan_active_sub']).classes('text-xs text-green-700 font-bold bg-green-100 px-3 py-1 rounded-full mt-2')
                         else:
                             with ui.column().classes('w-full p-8 items-center text-center bg-gray-50'):
@@ -220,20 +223,22 @@ def profile():
                                         ui.icon('event_busy', size='4xl', color='gray-300')
                                         ui.label(t['empty_classes']).classes('mt-4 text-sm')
                                 else:
-                                    # Preparar datos para tabla (TRADUCCIÓN DE ESTADOS AQUÍ)
+                                    # Preparar datos para tabla (ALCABALA: Traducir días y estados)
                                     rows_a = []
                                     for a in assigned_data_objs:
                                         h_start = f"{str(a.start_time).zfill(4)[:2]}:{str(a.start_time).zfill(4)[2:]}"
                                         
-                                        # Traducir el estado para mostrar, mantener raw para lógica
+                                        # Traducir el estado para mostrar
                                         status_display = t['status_map'].get(a.status, a.status.replace('_', ' '))
-                                        
+                                        # Traducir el día (Lunes -> Monday)
+                                        day_display = t_val(a.days, lang)
+
                                         rows_a.append({
                                             'Fecha': a.date,
-                                            'Día': a.days,
+                                            'Día': day_display, # Valor traducido
                                             'Hora': h_start,
                                             'Estado': status_display, # Valor traducido
-                                            'raw_status': a.status    # Valor original DB para colores
+                                            'raw_status': a.status    # Valor original DB para lógica de colores
                                         })
                                     
                                     cols_a = [
@@ -267,8 +272,9 @@ def profile():
                                 else:
                                     ui.label(t['prefs_title']).classes('text-lg font-bold text-gray-800 mb-4')
                                     
+                                    # ALCABALA: Traducir días de preferencias
                                     rows_s = [{
-                                        'Día': s.days,
+                                        'Día': t_val(s.days, lang), # Traducción aquí
                                         'Inicio': f"{str(s.start_time).zfill(4)[:2]}:{str(s.start_time).zfill(4)[2:]}",
                                         'Fin': f"{str(s.end_time).zfill(4)[:2]}:{str(s.end_time).zfill(4)[2:]}"
                                     } for s in schedule_data_objs]

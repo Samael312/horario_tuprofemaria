@@ -11,7 +11,14 @@ from components.h_selection import make_selection_handler
 from components.clear_table import clear_table
 from components.delete_rows import delete_selected_rows_v2
 from components.botones.button_dur import make_add_hour_button
-from components.share_data import *
+# Importamos shared data y el helper de traducción (t_val)
+from components.share_data import (
+    pack_of_classes, 
+    duration_options, 
+    days_of_week, 
+    hours_of_day, 
+    t_val
+)
 from collections import Counter
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s | %(name)s | %(message)s")
@@ -109,8 +116,7 @@ TRANSLATIONS = {
 def _persist_data_sync(username, user_update, schedules_list, lang='es'):
     """
     Función worker que corre en otro hilo.
-    Acepta 'lang' para devolver logs traducidos si fuera necesario,
-    aunque los logs suelen ser técnicos.
+    Acepta 'lang' para devolver logs traducidos si fuera necesario.
     """
     t = TRANSLATIONS.get(lang, TRANSLATIONS['es'])
     log_msgs = []
@@ -196,12 +202,15 @@ def profile_edit():
         # Datos para inputs de horario
         rgh_obj = session.query(SchedulePref).filter(SchedulePref.username == username).first()
         raw_package = getattr(rgh_obj, 'package', None) if rgh_obj else None
+        
+        # Validación: Aseguramos que el valor de DB exista en nuestras opciones válidas
         package_value = raw_package if raw_package in pack_of_classes else None
         
         durations_user = [s.duration for s in session.query(SchedulePref).filter(SchedulePref.username == username).all()]
         default_duration = Counter(durations_user).most_common(1)[0][0] if durations_user else None
 
         # Inicializar estructura de datos para la tabla (Estado Local)
+        # IMPORTANTE: local_group_data usa las claves internas (Español)
         local_group_data = {h: {d: "" for d in days_of_week} for h in hours_of_day}
 
         # Poblar local_group_data con datos de DB
@@ -212,6 +221,7 @@ def profile_edit():
                 h_fin = f"{str(s.end_time).zfill(4)[:2]}:{str(s.end_time).zfill(4)[2:]}"
                 texto_intervalo = f"{h_ini}-{h_fin}"
                 
+                # s.days viene de la BD (ej: "Lunes"), coincide con days_of_week interno
                 if h_ini in local_group_data: local_group_data[h_ini][s.days] = texto_intervalo
                 if h_fin in local_group_data: local_group_data[h_fin][s.days] = texto_intervalo
 
@@ -221,6 +231,10 @@ def profile_edit():
         return
     finally:
         session.close()
+
+    # --- INICIALIZACIÓN HEADER ---
+    # Pasamos el callback para refrescar el contenido al cambiar idioma
+    create_main_screen(page_refresh_callback=lambda: profile_content.refresh())
 
     # --- CONTENIDO REFRESHABLE (INTERNACIONALIZADO) ---
     @ui.refreshable
@@ -283,21 +297,22 @@ def profile_edit():
 
                 with ui.column().classes('w-full p-6 gap-6'):
                     
-                    # --- SECCIÓN PAQUETE ---
+                    # --- SECCIÓN PAQUETE (ALCABALA) ---
                     rgh_inputs = {}
+                    # Creamos diccionario de opciones traducidas
+                    pkg_options = {k: t_val(k, lang) for k in sorted(pack_of_classes)}
+
                     with ui.row().classes('w-full items-end gap-4'):
                         with ui.column().classes('flex-grow gap-1'):
                             ui.label(t['label_package']).classes('text-sm font-bold text-gray-600')
                             
                             def show_package_alert():
-                                ui.notify(t['alert_package'], 
-                                          type='warning', 
-                                          icon='lock_clock',
-                                          position='center')
+                                ui.notify(t['alert_package'], type='warning', icon='lock_clock', position='center')
 
                             with ui.element('div').classes('w-full md:w-1/2 cursor-not-allowed').on('click', show_package_alert):
+                                # Usamos pkg_options para mostrar texto traducido, pero value sigue siendo interno
                                 pkg_select = ui.select(
-                                    options=sorted(pack_of_classes),
+                                    options=pkg_options,
                                     value=package_value
                                 ).props('outlined dense disable').classes('w-full pointer-events-none') 
                                 
@@ -311,26 +326,32 @@ def profile_edit():
                     
                     with ui.row().classes('w-full bg-gray-50 p-4 rounded-lg border border-gray-200 items-center gap-4 justify-between wrap'):
                         
-                        # 1. Días
+                        # 1. Días (ALCABALA)
                         with ui.column().classes('gap-1'):
                             ui.label(t['step_1']).classes('text-xs font-bold text-gray-500 uppercase')
+                            # Diccionario traducido para el selector
+                            days_options = {d: t_val(d, lang) for d in days_of_week}
+                            
                             day_selector = ui.select(
-                                days_of_week, 
+                                days_options, 
                                 multiple=True, 
                                 value=[],
                                 label=t['select_days_label']
                             ).props('outlined dense bg-white').classes('min-w-[200px]')
 
-                        # 2. Duración
+                        # 2. Duración (ALCABALA)
                         with ui.column().classes('gap-1'):
                             ui.label(t['step_2']).classes('text-xs font-bold text-gray-500 uppercase')
+                            # Diccionario traducido para el selector
+                            dur_options = {d: t_val(d, lang) for d in duration_options}
+                            
                             duration_selector = ui.select(
-                                duration_options, 
+                                dur_options, 
                                 value=default_duration,
                                 label=t['label_minutes']
                             ).props('outlined dense bg-white').classes('w-32')
 
-                        # 3. Horas
+                        # 3. Horas (Formato técnico 00:00, no requiere traducción)
                         with ui.column().classes('gap-1'):
                             ui.label(t['step_3']).classes('text-xs font-bold text-gray-500 uppercase')
                             with ui.row().classes('gap-2 items-center'):
@@ -355,17 +376,20 @@ def profile_edit():
                         # 4. Botón Agregar
                         add_hour_btn = ui.button(icon='add', color='primary').props('round shadow-lg').tooltip(t['tooltip_add'])
 
-                    # --- TABLA DE HORARIOS ---
-                    # Reconstruimos filtered_rows cada vez que se refresca el UI para reflejar local_group_data
+                    # --- TABLA DE HORARIOS (ALCABALA) ---
+                    # Reconstruimos filtered_rows para la vista
                     filtered_rows = []
                     for hora, vals in local_group_data.items():
                         if any(v != "" for v in vals.values()):
                             filtered_rows.append({'hora': hora, **vals})
 
+                    # Definición de Columnas:
+                    # 'field': 'd' (usa la clave interna "Lunes")
+                    # 'label': t_val(...) (muestra "MON" traducido)
                     table_cols = [
                         {'name': 'hora', 'label': t['col_hour'], 'field': 'hora', 'align': 'center', 'headerClasses': 'bg-gray-100 text-gray-800 font-bold'},
                     ] + [
-                        {'name': d, 'label': d[:3].upper(), 'field': d, 'align': 'center', 'headerClasses': 'bg-pink-100 text-pink-800 font-bold'} 
+                        {'name': d, 'label': t_val(d, lang)[:3].upper(), 'field': d, 'align': 'center', 'headerClasses': 'bg-pink-100 text-pink-800 font-bold'} 
                         for d in days_of_week
                     ]
 
@@ -394,8 +418,9 @@ def profile_edit():
             # BOTONES GUARDAR / VOLVER
             # =================================================
             async def save_changes():
-                # --- Recolectar Datos de los Inputs de este render ---
-                # Importante: se leen de las variables locales del refreshable
+                # --- Recolectar Datos ---
+                # Leemos los valores .value de los selectores (que son las claves internas)
+                
                 user_data_update = {
                     'name': personal_inputs['name'].value,
                     'surname': personal_inputs['surname'].value,
@@ -403,12 +428,13 @@ def profile_edit():
                     'email': personal_inputs['email'].value
                 }
                 
-                pkg_val = rgh_inputs['package'].value
-                dur_val = duration_selector.value
+                pkg_val = rgh_inputs['package'].value # Valor interno (Español)
+                dur_val = duration_selector.value     # Valor interno (Español)
                 new_schedules = []
                 seen_intervals = set()
 
                 for row in table.rows:
+                    # Iteramos sobre la lista days_of_week interna (Español)
                     for day in days_of_week:
                         cell_val = row.get(day)
                         if cell_val and "-" in str(cell_val):
@@ -426,7 +452,7 @@ def profile_edit():
                                             'surname': user_data_update['surname'],
                                             'duration': dur_val,
                                             'package': pkg_val,
-                                            'days': day,
+                                            'days': day, # Se guarda en Español (Lunes)
                                             'start_time': s_int,
                                             'end_time': e_int
                                         })
@@ -436,7 +462,7 @@ def profile_edit():
                 # --- Ejecutar Worker ---
                 try:
                     notification = ui.notify(t['notify_saving'], type='ongoing', timeout=5000, icon='cloud_upload')
-                    # Pasamos el idioma al worker por si quiere devolver strings traducidos
+                    # Pasamos el idioma al worker para logs
                     msgs = await run.io_bound(_persist_data_sync, username, user_data_update, new_schedules, lang)
                     
                     for m in msgs: logger.info(m)
@@ -456,7 +482,7 @@ def profile_edit():
                 ui.button(t['btn_save'], on_click=save_changes, icon='save')\
                     .props('push color=positive size=lg').classes('px-8')
 
-            # Inicializar lógica del botón (debe estar dentro del refreshable porque depende de los inputs creados aquí)
+            # Inicializar lógica del botón (debe estar dentro del refreshable)
             make_add_hour_button(
                 add_hour_btn,
                 day_selector=day_selector,
@@ -466,7 +492,7 @@ def profile_edit():
                 end_time_input=end_time,
                 valid_hours=hours_of_day,
                 group_data=local_group_data,
-                days_of_week=days_of_week,
+                days_of_week=days_of_week, # Clave interna
                 table=table,
                 # Pasar traducciones al componente
                 notify_success=t['add_btn_success'],
@@ -478,10 +504,6 @@ def profile_edit():
                 notify_bad_format=t['add_btn_bad_fmt'],
                 notify_interval_invalid=t['add_btn_invalid_int']
             )
-
-    # --- INICIALIZACIÓN ---
-    # 1. Crear Header y pasarle la función de refresco del contenido
-    create_main_screen(page_refresh_callback=profile_content.refresh)
 
     # 2. Renderizar contenido inicial
     profile_content()
