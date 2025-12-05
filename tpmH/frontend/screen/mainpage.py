@@ -5,39 +5,49 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from nicegui import app, ui
-from passlib.hash import pbkdf2_sha256
 
 # =====================================================
-# CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS
+# 1. CONFIGURACIÓN GLOBAL Y ESTÁTICOS
 # =====================================================
+
+# --- VARIABLE GLOBAL POR DEFECTO ---
+DEFAULT_LANG = 'es' 
+
 current_dir = Path(__file__).parent.resolve()
 project_root = current_dir.parent.parent
 static_dir = project_root / 'components'
 
-if static_dir.exists():
-    app.add_static_files('/static', str(static_dir))
-else:
-    print(f"⚠️ ERROR: No se encuentra la carpeta {static_dir}")
+# Aseguramos que la carpeta exista para evitar errores
+if not static_dir.exists():
+    # Fallback por si estás probando en una estructura diferente
+    static_dir = current_dir / 'static' 
+    if not static_dir.exists():
+        os.makedirs(static_dir, exist_ok=True)
+
+app.add_static_files('/static', str(static_dir))
 
 unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage'}
 
 # =====================================================
-# MIDDLEWARE DE AUTENTICACIÓN
+# 2. MIDDLEWARE DE AUTENTICACIÓN
 # =====================================================
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if not app.storage.user.get('authenticated', False):
             if request.url.path == '/':
                 return RedirectResponse('/MainPage')
-            # Permitimos /static explícitamente para que carguen las imágenes
+            
+            # Excepciones para archivos estáticos y rutas públicas
             if (not request.url.path.startswith('/_nicegui') 
                 and not request.url.path.startswith('/static') 
                 and request.url.path not in unrestricted_page_routes):
                 return RedirectResponse(f'/login?redirect_to={request.url.path}')
         return await call_next(request)
 
+app.add_middleware(AuthMiddleware)
+
 # =====================================================
-# DICCIONARIO DE TRADUCCIONES
+# 3. DICCIONARIO DE TRADUCCIONES
 # =====================================================
 TRANSLATIONS = {
     'es': {
@@ -104,6 +114,9 @@ def get_plans(lang):
         }
     ]
 
+# =====================================================
+# 4. PÁGINA PRINCIPAL
+# =====================================================
 @ui.page('/MainPage')
 def render_landing_page():
     
@@ -121,22 +134,32 @@ def render_landing_page():
         </style>
     ''')
 
-    # 1. Header Shell
-    header_shell = ui.header().classes('glass text-slate-800 p-4 sticky top-0 z-50 transition-all')
-
-    def trigger_lang_change(new_lang):
+    # --- LÓGICA DE IDIOMA GLOBAL ---
+    
+    # 1. Función Trigger: Cambia la variable global (en storage) y refresca TODO
+    def change_language(new_lang):
         app.storage.user['lang'] = new_lang
+        # Refrescamos las partes clave de la UI
         render_header_content.refresh()
         render_body_content.refresh()
 
-    # 2. HEADER CONTENT
+    # 2. Getter: Obtiene el idioma actual o usa el DEFAULT_LANG global
+    def get_current_lang():
+        return app.storage.user.get('lang', DEFAULT_LANG)
+
+
+    # --- COMPONENTES UI ---
+
+    # Header Container (Shell)
+    header_shell = ui.header().classes('glass text-slate-800 p-4 sticky top-0 z-50 transition-all')
+
     @ui.refreshable
     def render_header_content():
-        lang = app.storage.user.get('lang', 'es')
+        lang = get_current_lang()
         t = TRANSLATIONS[lang]
 
         with ui.row().classes('w-full max-w-7xl mx-auto justify-between items-center'):
-            # Logo del Header
+            # Logo
             with ui.row().classes('items-center gap-2'):
                 ui.icon('school', size='md', color='rose-600')
                 ui.label('Tu Profe María').classes('text-xl font-bold tracking-tight text-slate-800')
@@ -147,16 +170,19 @@ def render_landing_page():
                 ui.link(t['nav_video'], '#video').classes('text-sm font-medium text-slate-600 hover:text-rose-600 no-underline')
                 ui.link(t['nav_plans'], '#plans').classes('text-sm font-medium text-slate-600 hover:text-rose-600 no-underline')
             
-            # Acciones + Selector
+            # Selector de Idioma y Botones
             with ui.row().classes('items-center gap-3'):
+                # Flag Icon Logic
                 current_flag = '/static/icon/espana.png' if lang == 'es' else '/static/icon/usa.png'
+                
                 with ui.button(icon='expand_more').props('flat round dense color=slate-700'):
                     ui.image(current_flag).classes('w-6 h-6 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2')
                     with ui.menu().classes('bg-white shadow-lg rounded-xl'):
-                        with ui.menu_item(on_click=lambda: trigger_lang_change('es')).classes('gap-2'):
+                        # EL TRIGGER: change_language
+                        with ui.menu_item(on_click=lambda: change_language('es')).classes('gap-2'):
                             ui.image('/static/icon/espana.png').classes('w-6 h-6')
                             ui.label('Español').classes('text-slate-700')
-                        with ui.menu_item(on_click=lambda: trigger_lang_change('en')).classes('gap-2'):
+                        with ui.menu_item(on_click=lambda: change_language('en')).classes('gap-2'):
                             ui.image('/static/icon/usa.png').classes('w-6 h-6')
                             ui.label('English').classes('text-slate-700')
 
@@ -166,10 +192,9 @@ def render_landing_page():
                     .props('unelevated color=rose-600 text-color=white') \
                     .classes('rounded-full px-6 font-bold shadow-md hover:bg-rose-700 text-sm')
 
-    # 3. BODY CONTENT
     @ui.refreshable
     def render_body_content():
-        lang = app.storage.user.get('lang', 'es')
+        lang = get_current_lang()
         t = TRANSLATIONS[lang]
         current_plans = get_plans(lang)
 
@@ -196,33 +221,33 @@ def render_landing_page():
                     ui.label(t['video_title']).classes('text-4xl md:text-5xl font-bold')
                     ui.label(t['video_desc']).classes('text-slate-400 text-lg')
                 with ui.element('div').classes('w-full aspect-video bg-black rounded-2xl shadow-2xl border border-slate-700 overflow-hidden relative group'):
+                    # Asegúrate de que este archivo exista en tu carpeta static
                     ui.video('/static/resources/Presentacion%20preply%20chu.mp4').classes('w-full h-full object-cover')
 
-        # --- ABOUT (CON LOGO FLOTANTE CORREGIDO) ---
+        # --- ABOUT ---
         with ui.element('section').classes('w-full py-24 bg-white') as about_sec:
             about_sec.props('id=about')
             with ui.row().classes('max-w-6xl mx-auto px-6 gap-12 items-center'):
-                # FOTO (Izquierda)
+                # FOTO
                 with ui.column().classes('w-full md:w-1/2 relative'):
                     with ui.card().classes('w-full aspect-[4/5] bg-slate-200 rounded-2xl shadow-2xl rotate-3 border-4 border-white relative overflow-hidden'):
+                         # Asegúrate de que este archivo exista
                           ui.image('/static/resources/profile.jpg').classes('w-full h-full object-cover')
                     with ui.card().classes('absolute -bottom-6 -right-6 bg-white p-4 rounded-xl shadow-xl border border-slate-50 animate-bounce duration-[3000ms]'):
                         with ui.row().classes('items-center gap-3'):
                             with ui.element('div').classes('p-3 bg-green-100 rounded-full'): ui.icon('verified', color='green-600')
                             with ui.column().classes('gap-0'): ui.label(t['card_certified']).classes('text-sm font-bold text-slate-800'); ui.label(t['card_multi']).classes('text-xs text-slate-500')
                 
-                # TEXTO + LOGO (Derecha)
-                # 'relative' es clave aquí para que el logo absoluto se posicione respecto a esta columna
-                with ui.column().classes('w-full md:w-1/2 gap-6 relative min-h-[400px] justify-center'):
+                # TEXTO
+                with ui.column().classes('w-full md:w-1/2 relative'):
                     ui.label(t['about_tag']).classes('text-rose-600 font-bold tracking-widest uppercase text-sm')
                     ui.label(t['about_title']).classes('text-4xl font-bold text-slate-900')
-                    ui.markdown(t['about_desc']).classes('text-lg text-slate-600 leading-relaxed space-y-4 z-10') # z-10 para que el texto esté sobre el logo si se solapan
+                    ui.markdown(t['about_desc']).classes('text-lg text-slate-600 leading-relaxed space-y-4 z-10')
                     
                     with ui.row().classes('gap-8 mt-4 z-10'):
                         with ui.column(): ui.label('2+').classes('text-3xl font-bold text-slate-900'); ui.label(t['stat_lang']).classes('text-sm text-slate-500 uppercase')
                         with ui.column(): ui.label('100%').classes('text-3xl font-bold text-slate-900'); ui.label(t['stat_passion']).classes('text-sm text-slate-500 uppercase')
                         with ui.column(): ui.label('Online').classes('text-3xl font-bold text-slate-900'); ui.label(t['stat_online']).classes('text-sm text-slate-500 uppercase')
-    
 
         # --- PLANS ---
         with ui.element('section').classes('w-full py-24 bg-slate-50') as plans_sec:
@@ -238,6 +263,7 @@ def render_landing_page():
                         is_rec = plan['recommended']
                         scale_class = 'scale-105 shadow-2xl border-rose-200 ring-2 ring-rose-500 ring-offset-2 z-10' if is_rec else 'hover:scale-105 shadow-lg border-slate-100 hover:shadow-xl'
                         btn_style = f'bg-{plan["color"]}-600 text-white hover:bg-{plan["color"]}-700' if is_rec else 'bg-slate-100 text-slate-800 hover:bg-slate-200'
+                        
                         with ui.card().classes(f'w-full p-6 rounded-2xl border transition-all duration-300 flex flex-col gap-4 bg-white {scale_class}'):
                             with ui.column().classes('gap-2'):
                                 if is_rec: ui.label(t['most_popular']).classes('self-start bg-rose-100 text-rose-700 text-[10px] font-bold px-2 py-1 rounded-full mb-2')
@@ -281,24 +307,25 @@ def render_landing_page():
                             with ui.button(icon='expand_more').props('flat round dense color=slate-400'):
                                 ui.image(current_flag_footer).classes('w-6 h-6 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2')
                                 with ui.menu().classes('bg-slate-800 border border-slate-700'):
-                                    with ui.menu_item(on_click=lambda: trigger_lang_change('es')).classes('gap-2 hover:bg-slate-700'):
+                                    with ui.menu_item(on_click=lambda: change_language('es')).classes('gap-2 hover:bg-slate-700'):
                                         ui.image('/static/icon/espana.png').classes('w-6 h-6')
                                         ui.label('Español').classes('text-white')
-                                    with ui.menu_item(on_click=lambda: trigger_lang_change('en')).classes('gap-2 hover:bg-slate-700'):
+                                    with ui.menu_item(on_click=lambda: change_language('en')).classes('gap-2 hover:bg-slate-700'):
                                         ui.image('/static/icon/usa.png').classes('w-6 h-6')
                                         ui.label('English').classes('text-white')
 
                         with ui.column().classes('gap-2'):
                             ui.label(t['footer_contact']).classes('font-bold text-slate-200 mb-2'); ui.label('tuprofemariaa@gmail.com').classes('text-slate-400 text-sm')
-                            # REDES SOCIALES
                             with ui.row().classes('gap-4 mt-2'):
                                 with ui.link(target='https://www.linkedin.com/in/maria-farias-2aa87a312/', new_tab=True):
                                     ui.image('/static/icon/linkedin.png').classes('w-8 h-8 cursor-pointer hover:scale-80 transition-transform')
                                 with ui.link(target='https://www.tiktok.com/@tuprofemaria?is_from_webapp=1&sender_device=pc', new_tab=True): 
                                     ui.image('/static/icon/tik-tok.png').classes('w-8 h-8 cursor-pointer hover:scale-80 transition-transform')
 
-    # 4. CONSTRUCCIÓN FINAL
+    # --- RENDERIZADO INICIAL ---
     with header_shell:
         render_header_content()
     
     render_body_content()
+
+ui.run(storage_secret='YOUR_SECRET_KEY_HERE') # IMPORTANTE: Define un storage_secret

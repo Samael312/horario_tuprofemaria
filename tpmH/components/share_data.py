@@ -1,20 +1,25 @@
 import zoneinfo
+INFINITY = float('inf')
+
+
+
+
 
 days_of_week = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
 duration_options = ['30 minutos', '1 hora']
 availability_options = ['Ocupado', 'Libre']
-pack_of_classes = ["Plan1", "Plan2", "Plan3"]
+pack_of_classes = ["Básico", "Personalizado", "Intensivo","Flexible"]
 PACKAGE_LIMITS = {
 
-    "Plan1":4,
-    "Plan2":8,
-    "Plan3":12,
-    "Ninguno": 0
+    "Básico":4,
+    "Personalizado":8,
+    "Intensivo":12,
+    "Flexible": INFINITY
 
 }
 
-max_days_per_plan = {"Plan1": 1, "Plan2": 2, "Plan3": 3}
-max_classes_per_plan = {"Plan1": 1, "Plan2": 1, "Plan3": 3}
+max_days_per_plan = {"Básico": 1, "Personalizado": 2, "Intensivo": 3, "Flexible": INFINITY}
+max_classes_per_plan = {"Básico": 1, "Personalizado": 1, "Intensivo": 3,  "Flexible": INFINITY}
 
 hours_of_day = [f'{h:02d}:{m:02d}' for h in range(24) for m in (0, 30)]
 
