@@ -32,6 +32,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # - Rutas públicas (login, signup, etc)
             if (not request.url.path.startswith('/_nicegui') 
                 and not request.url.path.startswith('/static') 
+                and not request.url.path.startswith('/uploads')
                 and request.url.path not in unrestricted_page_routes):
                 
                 return RedirectResponse(f'/login?redirect_to={request.url.path}')

@@ -25,6 +25,8 @@ def create_main_screen():
             nav_btn('Inicio', '/mainscreen', 'home')
             nav_btn('Horario', '/ScheduleMaker', 'edit_calendar')
             nav_btn('Mis Clases', '/myclasses', 'school')
+            nav_btn('Mis Tareas', '/StudentHomework', 'assignment')
+            nav_btn('Materiales', '/materials', 'menu_book')
             nav_btn('Profesora', '/teacher', 'people')
             
             # Separador vertical pequeño

@@ -20,7 +20,10 @@ from frontend.screen.MainAdminScreen.Subpages.editAdminProfile import profileA_e
 from frontend.screen.MainAdminScreen.Subpages.teacher_edit import teacherAdmin
 from frontend.screen.MainScreen.Mainpages.teacher import teacher_profile_view
 from frontend.screen.mainpage import render_landing_page
-
+from frontend.screen.MainAdminScreen.Mainpages.materialAdmin import materials_page
+from frontend.screen.MainAdminScreen.Mainpages.workAdmin import homework_page
+from frontend.screen.MainScreen.Mainpages.material import student_materials_page
+from frontend.screen.MainScreen.Mainpages.work import student_homework_page
 
 def init_ui():
     """Puente entre las pantallas de la app."""
@@ -34,7 +37,7 @@ def init_ui():
         
             return
         render_landing_page()
-        setup_auth_system() 
+        
         
         create_main_screen()  # delega la UI real a mainscreen.py
         create_signup_screen()  # delega la UI real a signup_screen.py
@@ -46,6 +49,8 @@ def init_ui():
         my_classes()
         scheduleMaker()
         teacher_profile_view()
+        student_materials_page()
+        student_homework_page()
         
         
         
@@ -58,3 +63,5 @@ def init_ui():
         students_edit()
         profileA_edit()
         teacherAdmin()
+        materials_page()
+        homework_page()

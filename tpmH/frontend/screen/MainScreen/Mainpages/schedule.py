@@ -9,7 +9,7 @@ from db.sqlite_db import BackupSession
 from db.models import User, ScheduleProf, ScheduleProfEsp, AsignedClasses, SchedulePref
 from components.header import create_main_screen
 from components.share_data import days_of_week, PACKAGE_LIMITS
-# IMPORTAMOS EL CONVERSOR (Si lo usas, sino puedes quitarlo)
+# IMPORTAMOS EL CONVERSOR
 from components.timezone_converter import convert_student_to_teacher, get_slots_in_student_tz, from_int_time
 
 # Configuración de logger
@@ -179,18 +179,16 @@ def scheduleMaker():
         finally:
             session.close()
 
+    # --- CAMBIO 1: book_class ya no llama a update_dashboard ---
     async def book_class(slot_int):
         session = PostgresSession()
-        success = False 
         try:
-            # 1. OBTENER USO DEL PAQUETE
             pkg, limit, used = get_current_package_usage(session, username)
             
             if limit > 0 and used >= limit:
                 ui.notify(f"Límite mensual alcanzado ({used}/{limit})", type='negative')
-                return
+                return False
             
-            # 1.1 OBTENER USO TOTAL HISTÓRICO (Solo para guardar en el registro de la clase)
             total_lifetime_used = session.query(AsignedClasses).filter(
                 AsignedClasses.username == username,
                 AsignedClasses.status != 'Cancelled'
@@ -201,7 +199,6 @@ def scheduleMaker():
             student_tz = user_db.time_zone or "UTC"
             duration = state['duration']
             
-            # Calcular horas
             s_str = str(slot_int).zfill(4)
             sh, sm = int(s_str[:2]), int(s_str[2:])
             start_dt_obj = datetime(2000, 1, 1, sh, sm)
@@ -211,39 +208,27 @@ def scheduleMaker():
             dt_obj = datetime.strptime(state['date'], '%Y-%m-%d')
             day_name = days_of_week[dt_obj.weekday()]
 
-            # Conversión zona horaria
             sp_time, ep_time, prof_date = convert_student_to_teacher(
                 state['date'], slot_int, duration, student_tz
             )
 
-            # Status
             status_to_save = "Prueba_Pendiente" if state['is_trial'] else "Pendiente"
-
-            # --- 2. CALCULAR ETIQUETA DE CONTEO ---
             current_class_num = used + 1
             count_label = f"{current_class_num}/{limit}" if limit > 0 else f"{current_class_num}"
-
-            # --- IMPORTANTE: NO TOCAMOS LA TABLA USER ---
-            # El objeto user_db NO se modifica aquí. La actualización de sus contadores
-            # ocurrirá cuando la profesora complete/finalice la clase.
 
             new_class = AsignedClasses(
                 username=username, name=user_db.name, surname=user_db.surname,
                 date=state['date'], days=day_name, 
-                start_time=slot_int,
-                end_time=end_int, 
-                start_prof_time=sp_time,
-                end_prof_time=ep_time,
-                date_prof=prof_date,
-                duration=str(duration), package=pkg, 
+                start_time=slot_int, end_time=end_int, 
+                start_prof_time=sp_time, end_prof_time=ep_time,
+                date_prof=prof_date, duration=str(duration), package=pkg, 
                 status=status_to_save,
-                class_count=count_label,        # Se guarda solo en la clase
-                total_classes=new_total_classes_seq # Se guarda solo en la clase
+                class_count=count_label,
+                total_classes=new_total_classes_seq
             )
             session.add(new_class)
             session.commit()
             
-            # Backup SQLite
             try:
                 bk_sess = BackupSession()
                 bk_sess.add(AsignedClasses(
@@ -252,27 +237,18 @@ def scheduleMaker():
                     end_time=end_int, duration=str(duration), package=pkg, 
                     status=status_to_save,
                     start_prof_time=sp_time, end_prof_time=ep_time, date_prof=prof_date,
-                    class_count=count_label,
-                    total_classes=new_total_classes_seq
+                    class_count=count_label, total_classes=new_total_classes_seq
                 ))
                 bk_sess.commit(); bk_sess.close()
             except: pass
 
-            ui.notify("Clase agendada correctamente", type='positive', icon='check')
-            success = True
+            return True
             
         except Exception as e:
-            ui.notify(f"Error: {e}", type='negative')
-            success = False
+            ui.notify(f"Error al guardar: {e}", type='negative')
+            return False
         finally:
             session.close()
-
-        if success:
-            await asyncio.sleep(0.1) 
-            try:
-                update_dashboard()
-            except Exception as e:
-                logger.error(f"Error actualizando dashboard: {e}")
 
     # =================================================================
     # COMPONENTES DE INTERFAZ (VIEW)
@@ -299,23 +275,39 @@ def scheduleMaker():
                 ui.button('Cancelar', on_click=d.close).props('unelevated color=red').classes('flex-1')
                 confirm_btn = ui.button('Reservar').props('unelevated color=green').classes('flex-1')
                 
+                # --- CAMBIO 2: Lógica optimizada del botón ---
                 async def do_book():
                     confirm_btn.props('loading')
                     try:
-                        await book_class(slot)
-                        d.close()
+                        # 1. Guardar en DB (esperamos resultado booleano)
+                        success = await book_class(slot)
+                        
+                        if success:
+                            # 2. Cerrar UI INMEDIATAMENTE para respuesta rápida
+                            d.close()
+                            ui.notify("Clase agendada correctamente", type='positive', icon='check')
+                            
+                            # 3. Lanzar actualización en segundo plano
+                            # Esto permite que el diálogo desaparezca antes de que empiece la carga pesada
+                            await update_dashboard() 
+                        else:
+                            # Si falló (ej. límite alcanzado), solo quitamos loading
+                            confirm_btn.props(remove='loading')
+
                     except Exception as e:
                         confirm_btn.props(remove='loading')
                         ui.notify(str(e), type='negative')
+                
                 confirm_btn.on('click', do_book)
         d.open()
 
     @ui.refreshable
     def render_slots_area():
+        # Si estamos cargando, mostrar spinner
         if state.get('loading', False):
             with ui.column().classes('w-full items-center justify-center py-12'):
                 ui.spinner('dots', size='lg', color='rose')
-                ui.label('Buscando horarios disponibles...').classes('text-slate-400 text-sm animate-pulse')
+                ui.label('Actualizando disponibilidad...').classes('text-slate-400 text-sm animate-pulse')
             return
 
         try:
@@ -331,6 +323,7 @@ def scheduleMaker():
                 return
         except: return
 
+        # Esta función es la "pesada", ahora solo se ejecuta si loading es False
         current_duration = state['duration']
         all_slots = get_available_slots(state['date'], current_duration)
         pref_ranges = get_user_preferred_ranges(username, state['date'])
@@ -354,7 +347,6 @@ def scheduleMaker():
                     fmt_time = f"{t_str[:2]}:{t_str[2:]}"
                     is_preferred = is_in_user_range(slot, pref_ranges)
                     time_icon = get_time_icon(slot)
-
                     is_past_hour = is_today and (slot < current_hhmm)
 
                     if is_past_hour:
@@ -374,7 +366,6 @@ def scheduleMaker():
                         f"{btn_classes} shadow-md border-b-4 rounded-xl py-3 px-0 "
                         "transition-all active:border-b-0 active:translate-y-1 h-auto flex flex-col gap-1"
                     )
-                    
                     with btn:
                         ui.icon(time_icon, size='xs').classes('opacity-90')
                         ui.label(fmt_time).classes('font-bold text-sm tracking-wide')
@@ -382,7 +373,6 @@ def scheduleMaker():
     @ui.refreshable
     def render_my_classes():
         session = PostgresSession()
-        
         now = datetime.now()
         now_int = int(now.strftime("%Y%m%d%H%M"))
         
@@ -398,8 +388,7 @@ def scheduleMaker():
                 c.status = 'Finalizada'
                 updates_made = True
         
-        if updates_made:
-            session.commit()
+        if updates_made: session.commit()
 
         classes = session.query(AsignedClasses).filter(
             AsignedClasses.username == username, 
@@ -426,7 +415,6 @@ def scheduleMaker():
                         with ui.column().classes('items-center leading-none px-2'):
                             ui.label(dt.strftime('%d')).classes('text-xl font-white text-slate-700')
                             ui.label(dt.strftime('%b')).classes('text-[10px] font-bold uppercase text-slate-400')
-                           
                         
                         with ui.column().classes('gap-0'):
                             with ui.row().classes('items-center gap-4 text-sm text-slate-500'):
@@ -436,13 +424,10 @@ def scheduleMaker():
                                 else:
                                     ui.label('Clase Regular').classes('mt-1 text-[10px] font-bold text-rose-600 uppercase bg-rose-100 px-2 py-0.5 rounded-full')
                                 
-                                    # --- MOSTRAR EL CONTEO SI EXISTE ---
                                 if getattr(c, 'class_count', None):
                                     ui.label(f"Clase {c.class_count}").classes('text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100')
 
                             ui.label(f'Inglés General ({dur_text})').classes('text-xs text-slate-500')
-                            
-                          
                     
                     ui.button(icon='close', on_click=lambda x=c: delete_class_dialog(x)).props('flat round dense color=slate size=sm').classes('opacity-0 group-hover:opacity-100 transition-opacity')
 
@@ -460,8 +445,8 @@ def scheduleMaker():
                         sess.query(AsignedClasses).filter(AsignedClasses.id == c_obj.id).delete()
                         sess.commit()
                         ui.notify('Clase cancelada', type='info')
-                        update_dashboard()
                         d.close()
+                        await update_dashboard() # Actualizamos también aquí
                     except: pass
                     finally: sess.close()
                 del_btn.on('click', do_del)
@@ -476,7 +461,6 @@ def scheduleMaker():
             AsignedClasses.username == username,
             AsignedClasses.status != 'Cancelled'
         ).count()
-        
         session.close()
         
         percent = min(used_curr/limit, 1.0) if limit > 0 else 0
@@ -505,28 +489,39 @@ def scheduleMaker():
     # LAYOUT & UPDATE
     # =================================================================
 
-    def update_dashboard():
+    # --- CAMBIO 3: update_dashboard ASÍNCRONO ---
+    async def update_dashboard():
+        # 1. Activamos carga visual inmediata
+        state['loading'] = True
+        
+        # 2. Refrescamos 'slots' para que muestre el spinner
+        render_slots_area.refresh()
+        
+        # Refrescamos los componentes ligeros que no tardan (header, stats, my classes)
+        # Nota: Si get_all_time_classes tarda, también se podría mover, pero suele ser rápido.
         lifetime_count = get_all_time_classes()
         is_trial_now = (lifetime_count == 0)
         
         if state['is_trial'] != is_trial_now:
             state['is_trial'] = is_trial_now
-            if not is_trial_now:
-                state['duration'] = 60
-            else:
-                state['duration'] = 30 
+            state['duration'] = 30 if is_trial_now else 60
 
-        render_slots_area.refresh()
+        render_header_area.refresh()
         render_my_classes.refresh()
         render_stats_widget.refresh()
-        render_header_area.refresh()
+
+        # 3. Importante: Cedemos el control al event loop para que la UI se pinte (se vea el spinner)
+        await asyncio.sleep(0.1)
+        
+        # 4. Desactivamos carga
+        state['loading'] = False
+        
+        # 5. Volvemos a refrescar slots. Como loading es False, ahora ejecutará 'get_available_slots'
+        #    y la UI se sentirá fluida porque ya vimos el spinner.
+        render_slots_area.refresh()
 
     async def on_date_change(e):
-        state['loading'] = True 
-        render_slots_area.refresh() 
-        await asyncio.sleep(0.1) 
-        state['loading'] = False
-        render_slots_area.refresh()
+        await update_dashboard()
 
     def render_sidebar():
         with ui.column().classes('w-full gap-6'):
@@ -547,11 +542,7 @@ def scheduleMaker():
             sub_color = "text-rose-500"
         
         async def on_duration_change(e):
-            state['loading'] = True
-            render_slots_area.refresh()
-            await asyncio.sleep(0.2)
-            state['loading'] = False
-            render_slots_area.refresh()
+            await update_dashboard()
 
         with ui.row().classes('items-center justify-between w-full'):
             with ui.column().classes('gap-0'):
@@ -573,8 +564,7 @@ def scheduleMaker():
                 refresh_btn = ui.button(icon='refresh').props('flat round color=slate')
                 async def do_refresh():
                     refresh_btn.props('loading')
-                    update_dashboard()
-                    await asyncio.sleep(0.5)
+                    await update_dashboard()
                     refresh_btn.props(remove='loading')
                 refresh_btn.on('click', do_refresh)
 

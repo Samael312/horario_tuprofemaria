@@ -32,6 +32,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Permitimos /static explícitamente para que carguen las imágenes
             if (not request.url.path.startswith('/_nicegui') 
                 and not request.url.path.startswith('/static') 
+                and not request.url.path.startswith('/uploads')
                 and request.url.path not in unrestricted_page_routes):
                 return RedirectResponse(f'/login?redirect_to={request.url.path}')
         return await call_next(request)
@@ -150,21 +151,23 @@ def render_landing_page():
             # Acciones + Selector
             with ui.row().classes('items-center gap-3'):
                 current_flag = '/static/icon/espana.png' if lang == 'es' else '/static/icon/usa.png'
-                with ui.button(icon='expand_more').props('flat round dense color=slate-700'):
-                    ui.image(current_flag).classes('w-6 h-6 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2')
-                    with ui.menu().classes('bg-white shadow-lg rounded-xl'):
-                        with ui.menu_item(on_click=lambda: trigger_lang_change('es')).classes('gap-2'):
-                            ui.image('/static/icon/espana.png').classes('w-6 h-6')
-                            ui.label('Español').classes('text-slate-700')
-                        with ui.menu_item(on_click=lambda: trigger_lang_change('en')).classes('gap-2'):
-                            ui.image('/static/icon/usa.png').classes('w-6 h-6')
-                            ui.label('English').classes('text-slate-700')
+                logo_img = '/static/icon/logo.png'
+                #with ui.button(icon='expand_more').props('flat round dense color=slate-700'):
+                #    ui.image(current_flag).classes('w-6 h-6 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2')
+                #     with ui.menu().classes('bg-white shadow-lg rounded-xl'):
+                #        with ui.menu_item(on_click=lambda: trigger_lang_change('es')).classes('gap-2'):
+                #            ui.image('/static/icon/espana.png').classes('w-6 h-6')
+                #            ui.label('Español').classes('text-slate-700')
+                #        with ui.menu_item(on_click=lambda: trigger_lang_change('en')).classes('gap-2'):
+                #            ui.image('/static/icon/usa.png').classes('w-6 h-6')
+                #            ui.label('English').classes('text-slate-700')
 
                 ui.button(t['btn_login'], on_click=lambda: ui.navigate.to('/login')) \
                     .props('flat text-color=slate-700').classes('font-bold text-sm')
                 ui.button(t['btn_signup'], on_click=lambda: ui.navigate.to('/signup')) \
                     .props('unelevated color=rose-600 text-color=white') \
                     .classes('rounded-full px-6 font-bold shadow-md hover:bg-rose-700 text-sm')
+                ui.image(logo_img).classes('w-10 h-10 rounded-full border-2 border-rose-600 shadow-md')
 
     # 3. BODY CONTENT
     @ui.refreshable

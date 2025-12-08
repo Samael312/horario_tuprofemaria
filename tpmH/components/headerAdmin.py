@@ -24,6 +24,8 @@ def create_admin_screen():
             nav_btn('Inicio', '/admin')
             nav_btn('Horario', '/Admhorario')
             nav_btn('Mis Clases', '/myclassesAdmin')
+            nav_btn('Materiales', '/MaterialsAdmin')
+            nav_btn('Tareas', '/WorkAdmin')
             nav_btn('Estudiantes', '/Students')
             nav_btn('Perfil Público', '/teacher')
 

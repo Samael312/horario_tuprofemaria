@@ -11,6 +11,7 @@ class User(Base):
     name = Column(String, unique=False)
     surname = Column(String, unique=False)
     email = Column(String, unique=True)
+    goal = Column(String, unique=False, default="") #Nueva
     role = Column(String, unique=False, default="client")
     time_zone = Column(String, unique=False, default="UTC") # Zona horaria del usuario
     package = Column(String, unique=False, default="") 
@@ -102,3 +103,46 @@ class TeacherProfile(Base):
     certificates = Column(JSON, unique=False)
     social_links = Column(JSON, unique=False)
     reviews = Column(JSON, unique=False)
+
+class Material(Base):
+    __tablename__ = "materials"
+    id = Column(Integer, primary_key=True)
+    title = Column(String, unique=False)
+    content = Column(String, unique=False)
+    date_up= Column(String, unique=False)
+    category = Column(String, unique=False)
+    level = Column(String, unique=False)
+    tags = Column(JSON, unique=False)
+
+class HWork(Base):
+    __tablename__ = "homework"
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=False)
+    name = Column(String, unique=False)
+    surname = Column(String, unique=False)
+    title = Column(String, unique=False)
+    content = Column(String, unique=False)
+    date_assigned = Column(String, unique=False)
+    date_due = Column(String, unique=False)
+    status = Column(String, unique=False, default="Pending")
+    tagsW = Column(JSON, unique=False)
+
+class StudentMaterial(Base):
+    __tablename__ = "student_materials"
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=False)
+    name = Column(String, unique=False)
+    surname = Column(String, unique=False)
+    material_id = Column(Integer, unique=False)
+    progress = Column(String, unique=False, default="Not Started")
+
+class StudentHWork(Base):
+    __tablename__ = "student_homework"
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=False)
+    name = Column(String, unique=False)
+    surname = Column(String, unique=False)
+    homework_id = Column(Integer, unique=False)
+    submission = Column(String, unique=False)
+    status = Column(String, unique=False, default="Pending")
+    grade = Column(JSON, unique=False, default="")
