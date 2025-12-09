@@ -4,14 +4,14 @@ import logging
 import asyncio  # Importamos asyncio para corregir el error del loop
 from zoneinfo import ZoneInfo # Para manejo preciso de zonas al reagendar
 
-# --- IMPORTS DE BASE DE DATOS ---
+
 from db.postgres_db import PostgresSession
 from db.sqlite_db import BackupSession
 from db.models import AsignedClasses, User, ScheduleProf, ScheduleProfEsp, SchedulePref
 from components.headerAdmin import create_admin_screen
-# Agregamos PACKAGE_LIMITS para calcular el límite del plan
+
 from components.share_data import days_of_week, PACKAGE_LIMITS 
-# Importamos conversor para recalcular horas al reagendar
+
 from components.timezone_converter import convert_student_to_teacher
 
 # Configuración de logger
@@ -348,7 +348,7 @@ def my_classesAdmin():
                         teacher_tz_str = admin_user.time_zone if admin_user and admin_user.time_zone else 'Europe/Madrid'
 
                         # Generar Slots cada 30 min (o duración clase)
-                        step = 30
+                        step = 60
                         duration = int(c.duration) if c.duration else 60
                         
                         # --- CÁLCULO DE SLOTS CORREGIDO (USANDO MINUTOS) ---

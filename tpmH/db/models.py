@@ -19,6 +19,7 @@ class User(Base):
     password_hash = Column(String)
     class_count = Column(String, unique=False) # Ej: "1/12", "5/8"
     total_classes = Column(Integer, unique=False, default=0)
+    renovations = Column(Integer, unique=False, default= 0)
     payment_info = Column(JSON, unique=False) # Información de pago (puede ser JSON)
     price = Column(Integer, unique=False, default=10) # Precio del plan
 

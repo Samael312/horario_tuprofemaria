@@ -27,16 +27,14 @@ def materials_page():
     uploader = None
     table = None
 
-    # --- HELPER: Detectar si es imagen (para lógica de tabla) ---
+    # --- HELPER: Detectar si es imagen ---
     def get_file_meta(filename):
         ext = os.path.splitext(filename)[1].lower()
         is_img = ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']
-        # Definir icono y color por defecto si no es imagen
         icon = 'description'
         color = 'grey'
         if ext == '.pdf': icon, color = 'picture_as_pdf', 'red'
         elif ext in ['.doc', '.docx']: icon, color = 'description', 'blue'
-        
         return is_img, icon, color
 
     def get_materials():
@@ -53,7 +51,6 @@ def materials_page():
                     'level': m.level,
                     'date': m.date_up,
                     'file': m.content,
-                    # Datos extra para la UI
                     'is_image': is_img,
                     'icon': icon,
                     'icon_color': color
@@ -62,7 +59,32 @@ def materials_page():
         finally:
             session.close()
 
-    # --- UPLOAD & SAVE (Sin cambios en lógica, solo visual) ---
+    # --- LÓGICA DE ELIMINACIÓN (NUEVO) ---
+    async def delete_material(row_data):
+        session = PostgresSession()
+        try:
+            # 1. Eliminar de la Base de Datos
+            session.query(Material).filter(Material.id == row_data['id']).delete()
+            session.commit()
+
+            # 2. Eliminar archivo físico (Opcional pero recomendado)
+            file_path = os.path.join(UPLOAD_DIR, row_data['file'])
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+            ui.notify('Material eliminado correctamente', type='positive')
+            
+            # 3. Actualizar la UI
+            table.rows = get_materials()
+            table.update()
+            
+        except Exception as e:
+            ui.notify(f'Error al eliminar: {str(e)}', type='negative')
+            session.rollback()
+        finally:
+            session.close()
+
+    # --- UPLOAD & SAVE ---
     async def process_upload_to_disk(e):
         try:
             filename = "unknown"
@@ -151,7 +173,7 @@ def materials_page():
                 ui.label('Biblioteca de Materiales').classes('text-2xl font-bold text-slate-800')
                 ui.label('Vista previa y gestión').classes('text-sm text-slate-500')
 
-        # Form
+        # Formulario
         with ui.card().classes('w-full bg-white p-6 rounded-2xl shadow-sm border border-slate-100'):
             with ui.row().classes('w-full gap-6 items-start'):
                 with ui.column().classes('flex-1 gap-4'):
@@ -163,9 +185,9 @@ def materials_page():
                     uploader = ui.upload(label='Archivo', auto_upload=False, on_upload=handle_upload_event).props('flat bordered color=indigo').classes('w-full')
                     ui.button('Guardar', icon='cloud_upload', on_click=trigger_upload).classes('w-full bg-indigo-600 text-white')
 
-        # Tabla con VISTA PREVIA
+        # Tabla
         cols = [
-            {'name': 'preview', 'label': '', 'field': 'preview', 'align': 'center'}, # Columna nueva para el icono/foto
+            {'name': 'preview', 'label': '', 'field': 'preview', 'align': 'center'},
             {'name': 'title', 'label': 'RECURSO', 'field': 'title', 'align': 'left'},
             {'name': 'category', 'label': 'INFO', 'field': 'category', 'align': 'left'},
             {'name': 'actions', 'label': 'ACCIONES', 'field': 'actions', 'align': 'right'},
@@ -173,7 +195,7 @@ def materials_page():
         
         table = ui.table(columns=cols, rows=get_materials()).classes('w-full').props('flat')
 
-        # Slot 1: VISTA PREVIA (Avatar o Icono)
+        # Slots
         table.add_slot('body-cell-preview', r'''
             <q-td key="preview" :props="props" style="width: 60px">
                 <div class="flex justify-center items-center">
@@ -188,7 +210,6 @@ def materials_page():
             </q-td>
         ''')
 
-        # Slot 2: Título y Nombre de archivo
         table.add_slot('body-cell-title', r'''
             <q-td key="title" :props="props">
                 <div class="font-bold text-slate-700">{{ props.row.title }}</div>
@@ -203,11 +224,15 @@ def materials_page():
             </q-td>
         ''')
 
+        # Slot MODIFICADO: Agregado botón delete
         table.add_slot('body-cell-actions', r'''
             <q-td key="actions" :props="props">
                 <q-btn icon="send" flat round color="pink" size="sm" @click="$parent.$emit('assign', props.row)" />
                 <q-btn icon="visibility" flat round color="grey" size="sm" :href="'/uploads/' + props.row.file" target="_blank" />
+                <q-btn icon="delete" flat round color="red" size="sm" @click="$parent.$emit('delete', props.row)" />
             </q-td>
         ''')
         
+        # Conexión de eventos
         table.on('assign', lambda e: open_assign_dialog(e.args))
+        table.on('delete', lambda e: delete_material(e.args)) # Nuevo evento

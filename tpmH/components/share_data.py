@@ -7,6 +7,19 @@ days_of_week = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domi
 duration_options = ['30 minutos', '1 hora']
 availability_options = ['Ocupado', 'Libre']
 pack_of_classes = ["Básico", "Personalizado", "Intensivo", "Flexible"]
+goals_list = [
+    "Mantener conversaciones básicas sobre temas cotidianos",
+    "Mejorar la pronunciación y la fluidez al hablar",
+    "Ampliar el vocabulario para situaciones reales",
+    "Comprender mejor audios y vídeos en inglés",
+    "Escribir mensajes y correos simples sin errores comunes",
+    "Aprender y usar correctamente los tiempos verbales",
+    "Entender textos cortos y noticias sencillas",
+    "Prepararse para exámenes oficiales (A1, A2, B1, etc.)",
+    "Ganar confianza al participar en conversaciones",
+    "Poder viajar al extranjero usando solo inglés"
+]
+
 # Limite total de clases por paquete (Usado en el Registro/Signup)
 PACKAGE_LIMITS = {
     "Básico": 4,

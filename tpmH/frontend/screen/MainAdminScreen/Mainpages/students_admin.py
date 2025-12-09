@@ -75,6 +75,7 @@ def students():
                     'username': u.username,
                     'fullname': f"{u.name} {u.surname}",
                     'email': u.email or 'Sin correo',
+                    'goal': u.goal or 'Sin objetivo',
                     'role': u.role,
                     'package': u.package or 'Sin Plan',
                     'time_zone': u.time_zone or 'UTC',
@@ -208,6 +209,7 @@ def students():
                 {'name': 'fullname', 'label': 'ESTUDIANTE', 'field': 'fullname', 'align': 'left', 'sortable': True, 'headerClasses': 'text-slate-500 font-bold text-xs uppercase'},
                 {'name': 'info', 'label': 'CONTACTO', 'field': 'email', 'align': 'left', 'headerClasses': 'text-slate-500 font-bold text-xs uppercase'},
                 {'name': 'plan', 'label': 'PLAN', 'field': 'package', 'align': 'left', 'sortable': True, 'headerClasses': 'text-slate-500 font-bold text-xs uppercase'},
+                {'name': 'goal', 'label': 'OBJETIVO', 'field': 'goal', 'align': 'left', 'sortable': True, 'headerClasses': 'text-slate-500 font-bold text-xs uppercase'},
                 
                 # --- NUEVA COLUMNA PRECIO ---
                 {'name': 'price', 'label': 'PRECIO', 'field': 'price', 'align': 'center', 'sortable': True, 'headerClasses': 'text-slate-500 font-bold text-xs uppercase'},
@@ -239,6 +241,14 @@ def students():
                     <div class="flex column gap-1">
                         <q-badge :color="props.row.package ? 'blue-1' : 'grey-2'" :text-color="props.row.package ? 'blue-8' : 'grey-6'" class="font-bold">{{ props.row.package || 'SIN PLAN' }}</q-badge>
                         <div class="flex items-center gap-1 text-xs text-slate-400"><q-icon name="public" /><span>{{ props.row.time_zone }}</span></div>
+                    </div>
+                </q-td>
+            ''')
+
+            table.add_slot('body-cell-goal', '''
+                <q-td key="goal" :props="props">
+                    <div class="flex column gap-1">
+                        <q-badge :color="props.row.goal ? 'orange-1' : 'grey-2'" :text-color="props.row.goal ? 'orange-8' : 'grey-6'" class="font-bold">{{ props.row.goal || 'SIN OBJETIVO' }}</q-badge>
                     </div>
                 </q-td>
             ''')

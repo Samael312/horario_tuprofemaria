@@ -7,13 +7,13 @@ import zoneinfo
 from db.models import User
 from db.postgres_db import PostgresSession  # Para consultar si ya existe en la nube
 from db.services import create_user_service # Para guardar (Nube + Backup)
-from components.share_data import PACKAGE_LIMITS # IMPORTANTE: Para obtener los límites
+from components.share_data import PACKAGE_LIMITS, goals_list # IMPORTANTE: Para obtener los límites
 # -------------------------------------------
 
 # =====================================================
 # CONFIGURACIÓN
 # =====================================================
-unrestricted_page_routes = {'/signup', '/login'}
+unrestricted_page_routes = {'/signup', '/login', '/reset', '/MainPage', '/method'}
 all_timezones = sorted(zoneinfo.available_timezones())
 
 # =====================================================
@@ -64,6 +64,7 @@ def create_signup_screen():
                 'u': username.value.strip(),
                 'p': password.value.strip(),
                 'e': email.value.strip(),
+                'm': goal_selector.value.strip(),
                 'n': name.value.strip(),
                 's': surname.value.strip(),
                 't': time_zone.value,
@@ -100,9 +101,12 @@ def create_signup_screen():
                 limit = PACKAGE_LIMITS.get(data['pkg'], 0)
 
                 # B. Generar el JSON automático
+                selected_methods = app.storage.user.get('temp_payment_methods', [])
+
                 payment_json = {
                     "Clases_paquete": f"0/{limit}", # Formato: Pagadas/Límite
-                    "Clases_totales": 0             # Inicializado en 0
+                    "Clases_totales": 0,             # Inicializado en 0
+                    "preferred_methods": selected_methods
                 }
 
                 # C. Preparar diccionario
@@ -113,6 +117,7 @@ def create_signup_screen():
                     'name': data['n'],
                     'surname': data['s'],
                     'email': data['e'],
+                    'goal': data['m'],
                     'role': "client",
                     'time_zone': data['t'],
                     'password_hash': password_hash,
@@ -173,13 +178,23 @@ def create_signup_screen():
 
                 # SELECCIÓN DE PAQUETE (Nuevo)
                 # Obtenemos las opciones de las llaves de PACKAGE_LIMITS
+                preselected_plan = app.storage.user.get('selected_plan')
                 package_options = list(PACKAGE_LIMITS.keys())
+                default_value = preselected_plan if preselected_plan in package_options else package_options[0] if package_options else None
                 package_select = ui.select(
                     options=package_options,
                     label='Elige tu Plan',
-                    value=package_options[0] if package_options else None
+                    value=default_value
                 ).classes('w-full col-span-2').props('outlined dense') # col-span-2 para que ocupe todo el ancho
                 package_select.add_slot('prepend', '<q-icon name="inventory_2" />')
+
+                goal_options = goals_list
+                goal_selector = ui.select(
+                    options= goal_options,
+                    label= '¿Por qué quieres clases?',
+                    value= goal_options[0] if goal_options else None
+                ).classes('w-full col-span-2').props('outlined dense') # col-span-2 para que ocupe todo el ancho
+                goal_selector.add_slot('prepend', '<q-icon name="assignment" />')
 
             # Footer con Botón
             with ui.column().classes('w-full mt-8 gap-3'):

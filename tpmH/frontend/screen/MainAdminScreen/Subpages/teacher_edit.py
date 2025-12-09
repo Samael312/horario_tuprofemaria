@@ -1,6 +1,9 @@
 from nicegui import ui, app
 import base64
 import logging
+import os
+import uuid
+import shutil
 from components.headerAdmin import create_admin_screen
 from db.postgres_db import PostgresSession
 from db.models import Base, TeacherProfile, User 
@@ -8,7 +11,12 @@ from db.models import Base, TeacherProfile, User
 # Configurar logger
 logger = logging.getLogger(__name__)
 
-# Habilidades predefinidas para sugerir en el selector
+# --- CONFIGURACIÓN DE UPLOAD ---
+UPLOAD_DIR = 'uploads'
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.add_static_files('/uploads', UPLOAD_DIR)
+
+# Habilidades predefinidas
 PRESET_SKILLS = [
     "Gramática", "Conversación", "Pronunciación", "Vocabulario", 
     "Inglés de Negocios", "Preparación IELTS", "Preparación TOEFL", 
@@ -37,15 +45,16 @@ def teacherAdmin():
         'display_name': '',
         'title': '',
         'bio': '',
-        'video_url': '',
+        'video_url': '', # Youtube URL
         'skills': [],
         'new_skill': '',
         'certificates': [],
-        'gallery': [],
+        'gallery': [], # Lista de rutas: "/uploads/archivo.mp4"
         'social_links': { 
             'linkedin': '',
             'tiktok': '',
             'instagram': '',
+            'phone': '', # Nuevo campo
         }
     }
 
@@ -65,11 +74,11 @@ def teacherAdmin():
                 profile['title'] = db_profile.title or ''
                 profile['bio'] = db_profile.bio or ''
                 profile['video_url'] = db_profile.video or ''
-                # Asegurar que sean listas, incluso si la DB devuelve None
                 profile['skills'] = db_profile.skills if db_profile.skills is not None else []
                 profile['certificates'] = db_profile.certificates if db_profile.certificates is not None else []
                 profile['gallery'] = db_profile.gallery if db_profile.gallery is not None else []
-                # Cargar redes sociales (asegurar dict)
+                
+                # Cargar redes sociales y teléfono de forma segura
                 socials = db_profile.social_links if db_profile.social_links is not None else {}
                 profile['social_links'].update(socials)
                 
@@ -106,7 +115,7 @@ def teacherAdmin():
             db_profile.skills = profile['skills']
             db_profile.certificates = profile['certificates']
             db_profile.gallery = profile['gallery']
-            db_profile.social_links = profile['social_links'] # Guardar redes
+            db_profile.social_links = profile['social_links']
             
             session.commit()
             ui.notify('Perfil público guardado correctamente', type='positive', icon='cloud_done')
@@ -128,51 +137,84 @@ def teacherAdmin():
             profile['certificates'].pop(idx)
             render_certs.refresh()
             
-    def remove_gallery_image(idx):
+    def remove_gallery_item(idx):
         if 0 <= idx < len(profile['gallery']):
             profile['gallery'].pop(idx)
             render_gallery.refresh()
 
-    # --- LÓGICA DE UPLOAD ---
-    async def process_upload(e):
+    # --- LÓGICA DE UPLOAD (AVATAR) ---
+    async def handle_photo_upload_b64(e):
         try:
-            logger.info(f"Procesando subida: {getattr(e, 'name', 'Desconocido')}")
-            if hasattr(e, 'file'):
-                data = await e.file.read()
-                filename = e.file.name
-                mime = getattr(e.file, 'content_type', '') or 'image/jpeg'
-            elif hasattr(e, 'content'):
+            # Para el avatar seguimos usando Base64 (es pequeño y directo)
+            if hasattr(e, 'content'):
                 data = e.content.read()
-                filename = e.name
-                mime = e.type or 'image/jpeg'
+            elif hasattr(e, 'file'): # Fallback
+                data = await e.file.read()
             else:
-                raise Exception("No se pudo leer el archivo")
+                return
 
             b64_data = base64.b64encode(data).decode('utf-8')
-            
-            if not mime or 'image' not in mime: 
-                if filename.lower().endswith('.png'): mime = 'image/png'
-                else: mime = 'image/jpeg'
-            
-            return f"data:{mime};base64,{b64_data}"
-        except Exception as ex:
-            ui.notify(f'Error procesando archivo: {str(ex)}', type='negative')
-            logger.error(f"Upload Error: {ex}")
-            return None
+            # Intentar adivinar mime simple
+            mime = 'image/jpeg'
+            if hasattr(e, 'type') and e.type: mime = e.type
+            elif hasattr(e, 'name') and e.name.endswith('.png'): mime = 'image/png'
 
-    async def handle_photo_upload(e):
-        data_url = await process_upload(e)
-        if data_url:
-            profile['photo'] = data_url
+            profile['photo'] = f"data:{mime};base64,{b64_data}"
             render_avatar.refresh()
             ui.notify('Foto actualizada', type='positive')
+        except Exception as ex:
+            ui.notify(f'Error foto: {ex}', type='negative')
 
-    async def handle_gallery_upload(e):
-        data_url = await process_upload(e)
-        if data_url:
-            profile['gallery'].append(data_url)
+    # --- LÓGICA DE UPLOAD ROBUSTA (GALERÍA - DISCO) ---
+    async def handle_gallery_disk_upload(e):
+        try:
+            # 1. Extracción de datos segura (Corrige el error de Attribute)
+            filename = "unknown_file"
+            data = None
+
+            # Caso 1: NiceGUI standard wrapper
+            if hasattr(e, 'name') and hasattr(e, 'content'):
+                filename = e.name
+                data = e.content.read()
+            
+            # Caso 2: Objeto File de Starlette/FastAPI subyacente
+            elif hasattr(e, 'file'):
+                filename = getattr(e.file, 'name', 'unknown')
+                if hasattr(e.file, 'read'):
+                    try:
+                        data = await e.file.read()
+                    except:
+                        data = e.file.read() # Sync fallback
+
+            # Caso 3: Fallback de nombre con UUID
+            if not filename or filename == 'unknown' or filename == 'unknown_file':
+                ext = ".bin"
+                if hasattr(e, 'type'):
+                    if 'video' in e.type: ext = '.mp4'
+                    elif 'image' in e.type: ext = '.jpg'
+                filename = f"upload_{uuid.uuid4()}{ext}"
+
+            if not data:
+                raise Exception("No se pudieron leer los datos del archivo.")
+
+            # 2. Guardar en disco
+            # Limpiamos el nombre de espacios
+            filename = filename.replace(" ", "_")
+            filepath = os.path.join(UPLOAD_DIR, filename)
+            
+            with open(filepath, 'wb') as f:
+                f.write(data)
+            
+            # 3. Guardar ruta relativa en el perfil
+            file_url = f"/uploads/{filename}"
+            profile['gallery'].append(file_url)
+            
             render_gallery.refresh()
-            ui.notify('Imagen añadida a galería', type='positive')
+            ui.notify(f'Archivo subido: {filename}', type='positive')
+            
+        except Exception as ex:
+            ui.notify(f'Error subiendo archivo: {str(ex)}', type='negative')
+            logger.error(f"Gallery Upload Error: {ex}")
 
 
     # 5. INTERFAZ VISUAL
@@ -198,27 +240,18 @@ def teacherAdmin():
                     
                     @ui.refreshable
                     def render_avatar():
-                        # Avatar grande
                         src = profile['photo'] if profile['photo'] else 'https://www.gravatar.com/avatar/?d=mp'
                         with ui.image(src).classes('w-48 h-48 rounded-full object-cover border-4 border-rose-100 mb-4 shadow-sm bg-slate-100'):
                             pass
                     render_avatar()
                     
-                    # Uploader justo debajo
                     ui.upload(
                         label="Subir Foto (JPG/PNG)", 
                         auto_upload=True, 
                         max_files=1, 
-                        on_upload=handle_photo_upload
+                        on_upload=handle_photo_upload_b64
                     ).props('accept=".jpg, .jpeg, .png" flat color=rose dense w-full').classes('w-full max-w-[200px]')
                     
-                    ui.separator().classes('my-4')
-                    
-                    # URL input alternativo
-                    with ui.expansion('O usar URL de imagen', icon='link').classes('w-full text-sm text-slate-400'):
-                        ui.input('URL de la Foto', value=profile['photo']).bind_value(profile, 'photo') \
-                            .props('outlined dense rounded text-sm').classes('w-full mt-2')
-
                     ui.separator().classes('my-4')
                     
                     ui.input('Nombre (Cuenta)', value=profile['display_name']) \
@@ -228,18 +261,23 @@ def teacherAdmin():
                     ui.input('Título Profesional', value=profile['title']).bind_value(profile, 'title') \
                         .props('outlined dense placeholder="Ej. Experta en IELTS"').classes('w-full text-sm')
 
-                # --- NUEVA SECCIÓN: REDES SOCIALES (URL Completas) ---
+                # --- REDES SOCIALES Y CONTACTO ---
                 with ui.card().classes('w-full p-6 rounded-2xl shadow-sm border border-slate-100 bg-white'):
                     with ui.row().classes('items-center gap-2 mb-4'):
                         ui.icon('share', color='rose', size='sm')
-                        ui.label('Redes Sociales').classes('text-lg font-bold text-slate-800')
+                        ui.label('Contacto y Redes').classes('text-lg font-bold text-slate-800')
                     
-                    ui.label('Ingresa la URL completa de tu perfil (ej: https://...)').classes('text-xs text-slate-400 mb-2')
-
                     with ui.column().classes('w-full gap-3'):
+                        # Input Teléfono
+                        ui.input('WhatsApp / Teléfono', value=profile['social_links']['phone']) \
+                            .bind_value(profile['social_links'], 'phone') \
+                            .props('outlined dense rounded prepend-icon=phone placeholder="+34 600..."').classes('w-full')
+                        
+                        ui.separator().classes('my-2')
+
                         ui.input('LinkedIn URL', value=profile['social_links']['linkedin']) \
                             .bind_value(profile['social_links'], 'linkedin') \
-                            .props('outlined dense rounded placeholder="https://linkedin.com/in/..."').classes('w-full')
+                            .props('outlined dense rounded placeholder="https://linkedin.com/..."').classes('w-full')
                         
                         ui.input('Instagram URL', value=profile['social_links']['instagram']) \
                             .bind_value(profile['social_links'], 'instagram') \
@@ -248,8 +286,6 @@ def teacherAdmin():
                         ui.input('TikTok URL', value=profile['social_links']['tiktok']) \
                             .bind_value(profile['social_links'], 'tiktok') \
                             .props('outlined dense rounded placeholder="https://tiktok.com/..."').classes('w-full')
-                       
-
 
             # COLUMNA DERECHA (Detalles)
             with ui.column().classes('lg:col-span-2 gap-6'):
@@ -263,31 +299,27 @@ def teacherAdmin():
                     ui.textarea(value=profile['bio']).bind_value(profile, 'bio') \
                         .props('outlined rounded rows=4 placeholder="Cuéntales a tus alumnos sobre tu experiencia..."').classes('w-full')
 
-                # 2. VIDEO
+                # 2. VIDEO PRESENTACIÓN
                 with ui.card().classes('w-full p-6 rounded-2xl shadow-sm border border-slate-100'):
                     with ui.row().classes('items-center gap-2 mb-4'):
                         ui.icon('play_circle', color='rose', size='sm')
-                        ui.label('Video de Presentación').classes('text-lg font-bold text-slate-800')
+                        ui.label('Video de Presentación (YouTube)').classes('text-lg font-bold text-slate-800')
                     
                     ui.input('Enlace de YouTube', value=profile['video_url']).bind_value(profile, 'video_url') \
                         .props('outlined rounded prefix="URL" placeholder="https://youtube.com/..."').classes('w-full')
 
-                # 3. HABILIDADES (SELECTOR MEJORADO)
+                # 3. HABILIDADES
                 with ui.card().classes('w-full p-6 rounded-2xl shadow-sm border border-slate-100'):
                     with ui.row().classes('items-center gap-2 mb-4'):
                         ui.icon('stars', color='rose', size='sm')
-                        ui.label('Habilidades y Especialidades').classes('text-lg font-bold text-slate-800')
+                        ui.label('Habilidades').classes('text-lg font-bold text-slate-800')
 
-                    # Selector Múltiple con Chips y Creación
-                    # CORRECCIÓN: 'use-input' en props, eliminando 'use_input_chips' del constructor
                     ui.select(
                         options=PRESET_SKILLS,
                         label='Selecciona o escribe habilidades',
                         multiple=True,
                         new_value_mode='add-unique'
                     ).bind_value(profile, 'skills').props('use-chips use-input outlined color=rose behavior="menu"').classes('w-full')
-                    
-                    ui.label('Escribe y presiona Enter para añadir habilidades personalizadas.').classes('text-xs text-slate-400 mt-1')
 
                 # 4. CERTIFICADOS
                 with ui.card().classes('w-full p-6 rounded-2xl shadow-sm border border-slate-100'):
@@ -310,34 +342,45 @@ def teacherAdmin():
                                     ui.button(icon='delete', on_click=lambda i=idx: remove_certificate(i)).props('flat dense color=red size=sm rounded')
                     render_certs()
 
-                # 5. GALERÍA (ANEXOS)
+                # 5. GALERÍA (FOTOS Y VIDEOS)
                 with ui.card().classes('w-full p-6 rounded-2xl shadow-sm border border-slate-100'):
                     with ui.column().classes('w-full gap-4'):
-                        ui.label('Galería de Anexos').classes('text-lg font-bold text-slate-800')
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('perm_media', color='rose', size='sm')
+                            ui.label('Galería (Fotos y Videos)').classes('text-lg font-bold text-slate-800')
                         
-                        # Uploader Compacto
+                        # Uploader que llama a la función robusta
                         ui.upload(
-                            label="Subir Fotos (JPG/PNG)", 
+                            label="Subir Archivos (IMG / MP4)", 
                             auto_upload=True, 
                             multiple=True, 
-                            on_upload=handle_gallery_upload
-                        ).props('accept=".jpg, .jpeg, .png" flat color=rose dense bordered').classes('w-full border-2 border-dashed border-rose-200 rounded-lg p-2 bg-rose-50')
+                            on_upload=handle_gallery_disk_upload
+                        ).props('accept=".jpg, .jpeg, .png, .mp4" flat color=rose dense bordered').classes('w-full border-2 border-dashed border-rose-200 rounded-lg p-2 bg-rose-50')
                     
                     @ui.refreshable
                     def render_gallery():
                         if not profile['gallery']:
-                            ui.label('No hay imágenes en la galería.').classes('text-sm text-slate-400 italic mt-2')
+                            ui.label('No hay contenido en la galería.').classes('text-sm text-slate-400 italic mt-2')
                             return
                             
-                        # Grid de miniaturas compactas
-                        with ui.row().classes('w-full gap-3 flex-wrap mt-4'):
-                            for idx, img_src in enumerate(profile['gallery']):
-                                with ui.card().classes('w-32 h-32 p-0 relative group overflow-hidden border border-slate-200 rounded-lg shadow-sm'):
-                                    # Usamos img_src directamente (ya es data:image/...)
-                                    ui.image(img_src).classes('w-full h-full object-cover')
-                                    # Botón de borrar (Overlay)
-                                    with ui.column().classes('absolute inset-0 bg-black/40 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity'):
-                                        ui.button(icon='delete', on_click=lambda i=idx: remove_gallery_image(i)) \
+                        with ui.row().classes('w-full gap-4 flex-wrap mt-4'):
+                            for idx, resource_url in enumerate(profile['gallery']):
+                                with ui.card().classes('w-40 h-40 p-0 relative group overflow-hidden border border-slate-200 rounded-lg shadow-sm bg-black'):
+                                    
+                                    # Determinar tipo
+                                    is_video = resource_url.lower().endswith('.mp4')
+                                    
+                                    if is_video:
+                                        # Vista previa video
+                                        ui.video(resource_url).classes('w-full h-full object-cover')
+                                        ui.icon('play_circle', color='white').classes('absolute top-2 right-2 drop-shadow-md z-10')
+                                    else:
+                                        # Vista previa imagen
+                                        ui.image(resource_url).classes('w-full h-full object-cover')
+                                    
+                                    # Botón eliminar
+                                    with ui.column().classes('absolute inset-0 bg-black/50 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20'):
+                                        ui.button(icon='delete', on_click=lambda i=idx: remove_gallery_item(i)) \
                                             .props('flat round color=white')
                     render_gallery()
 

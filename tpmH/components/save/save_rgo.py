@@ -132,6 +132,7 @@ def create_save_schedule_button(button, table, days_of_week, duration_selector, 
                 pg_session.add(pref)
 
             pg_session.commit()
+            ui.navigate.to('/myclasses')
             logger.info(f"✅ Horarios corregidos guardados en NEON para {username}")
 
         except Exception as e:

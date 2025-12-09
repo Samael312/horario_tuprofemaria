@@ -2,19 +2,22 @@ from nicegui import ui, app
 from datetime import datetime
 import logging
 import uuid
+import os
 from components.header import create_main_screen
 from components.headerAdmin import create_admin_screen
 from db.postgres_db import PostgresSession
 from db.sqlite_db import BackupSession
 from db.models import TeacherProfile, User
-import os
 
 # Configurar logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS ---
+# Aseguramos que existan las carpetas y las servimos
+os.makedirs('uploads', exist_ok=True)
 app.add_static_files('/components', 'components')
+app.add_static_files('/uploads', 'uploads')
 
 @ui.page('/teacher')
 def teacher_profile_view():
@@ -31,6 +34,8 @@ def teacher_profile_view():
     icon_instagram = 'img:components/icon/instagram.png'
     icon_tiktok = 'img:components/icon/tik-tok.png' 
     icon_linkedin = 'img:components/icon/linkedin.png'
+    # Usamos icono standard de material icons para whatsapp o telefono si no tienes imagen
+    icon_whatsapp = 'img:components/icon/wapp.png'
 
     if username:
         session = PostgresSession()
@@ -80,7 +85,8 @@ def teacher_profile_view():
                 'social_links': {
                     'linkedin': socials.get('linkedin', ''),
                     'instagram': socials.get('instagram', ''),
-                    'tiktok': socials.get('tiktok', '')
+                    'tiktok': socials.get('tiktok', ''),
+                    'phone': socials.get('phone', '') # Nuevo campo
                 }
             }
         else:
@@ -90,7 +96,7 @@ def teacher_profile_view():
                 'title': 'Docente',
                 'bio': 'El profesor aún no ha configurado su perfil público.',
                 'video': '', 'skills': [], 'certificates': [], 'gallery': [], 'reviews': [],
-                'social_links': {'linkedin': '', 'instagram': '', 'tiktok': ''}
+                'social_links': {'linkedin': '', 'instagram': '', 'tiktok': '', 'phone': ''}
             }
     except Exception as e:
         logger.error(f"Error cargando perfil: {e}")
@@ -179,13 +185,24 @@ def teacher_profile_view():
         return None
 
     def open_lightbox(src):
-        # Lightbox sin límites restrictivos, usando 100% de viewport
+        # Detectar tipo de archivo
+        is_video = src.lower().endswith('.mp4')
+        
         with ui.dialog() as d, ui.card().classes('w-full h-full p-0 bg-transparent shadow-none items-center justify-center relative'):
-            ui.html(f'''
-                
-                    <img src="{src}" style="width:100%; height:100%; object-fit:contain; border-radius:20px; display:block ;box-shadow: 0 4px 6px rgba(0,0,0,0.3);" />
-              
-            ''', sanitize=False)
+            
+            if is_video:
+                # Renderizar Video Player
+                ui.html(f'''
+                    <video controls autoplay style="max-width:90%; max-height:90%; border-radius:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+                        <source src="{src}" type="video/mp4">
+                        Tu navegador no soporta videos HTML5.
+                    </video>
+                ''', sanitize=False)
+            else:
+                # Renderizar Imagen
+                ui.html(f'''
+                    <img src="{src}" style="max-width:90%; max-height:90%; object-fit:contain; border-radius:20px; display:block ;box-shadow: 0 4px 6px rgba(0,0,0,0.3);" />
+                ''', sanitize=False)
             
             # Botón cerrar flotante
             with ui.element('div').classes('absolute justify-center bottom-6 w-full flex'):
@@ -195,7 +212,7 @@ def teacher_profile_view():
     # --- UI PRINCIPAL ---
     with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-8 pb-20'):
         
-        # 1. HERO SECTION (Skills movidas de aquí)
+        # 1. HERO SECTION
         with ui.card().classes('w-full p-8 rounded-3xl bg-white shadow-sm border border-slate-100 flex flex-col md:flex-row gap-8 items-center md:items-start'):
             # Foto
             if profile_data.get('photo') and profile_data['photo'].startswith('data:'):
@@ -212,7 +229,7 @@ def teacher_profile_view():
                 ui.label(profile_data.get('name', '')).classes('text-4xl font-bold text-slate-800 leading-tight')
                 ui.label(profile_data.get('title', '')).classes('text-xl text-slate-500 font-medium mb-3')
                 
-                # REDES SOCIALES
+                # REDES SOCIALES Y CONTACTO
                 sl = profile_data.get('social_links', {})
                 if any(sl.values()):
                     with ui.row().classes('gap-3 justify-center md:justify-start mb-4'):
@@ -225,6 +242,14 @@ def teacher_profile_view():
                         if sl.get('tiktok'):
                             ui.button(icon=icon_tiktok, on_click=lambda: open_social_link(sl['tiktok'])) \
                                 .props('flat round dense size=md').tooltip('TikTok')
+                        
+                        # Botón WhatsApp / Teléfono
+                        if sl.get('phone'):
+                            # Limpiar numero para el link
+                            phone_num = ''.join(filter(str.isdigit, sl['phone']))
+                            wa_url = f"https://wa.me/{phone_num}"
+                            ui.button(icon=icon_whatsapp, on_click=lambda: open_social_link(wa_url)) \
+                                .props('flat round dense size=md color=green').tooltip('WhatsApp')
 
         # 2. CONTENIDO PRINCIPAL
         with ui.grid().classes('w-full grid-cols-1 lg:grid-cols-3 gap-8'):
@@ -238,7 +263,7 @@ def teacher_profile_view():
                         ui.label('Sobre Mí').classes('text-2xl font-bold text-slate-800')
                     ui.label(profile_data.get('bio', '')).classes('text-slate-600 leading-relaxed text-lg whitespace-pre-wrap font-light')
 
-                # Video
+                # Video Youtube (Intro)
                 vid_url = profile_data.get('video', '')
                 video_id = get_youtube_id(vid_url)
                 if video_id:
@@ -275,36 +300,66 @@ def teacher_profile_view():
                                         ui.label(cert['title']).classes('font-bold text-slate-700 text-sm leading-tight')
                                         ui.label(cert['year']).classes('text-xs text-slate-400 mt-0.5')
 
-                # --- SKILLS (NUEVA UBICACIÓN) ---
+                # Skills
                 if profile_data.get('skills'):
                     with ui.card().classes('w-full p-6 rounded-3xl shadow-sm border border-slate-100 bg-white'):
                         with ui.row().classes('items-center gap-2 mb-4'):
                             ui.icon('stars', color='rose', size='sm')
                             ui.label('Habilidades').classes('text-lg font-bold text-slate-800')
                         
-                        # Chips con wrap
                         with ui.row().classes('gap-2 flex-wrap'):
                             for skill in profile_data['skills']:
                                 ui.chip(skill, icon='check').props('color=rose-50 text-color=rose-700 dense').classes('font-bold border border-rose-100')
 
-                # --- GALERÍA (DEBAJO DE CERTIFICADOS Y SKILLS) ---
-                gallery_imgs = profile_data.get('gallery', [])
-                if gallery_imgs:
+                # --- GALERÍA (FOTOS Y VIDEOS) ---
+                gallery_items = profile_data.get('gallery', [])
+                if gallery_items:
                     with ui.card().classes('w-full p-6 rounded-3xl shadow-sm border border-slate-100 bg-white'):
                         with ui.row().classes('items-center gap-2 mb-4'):
                             ui.icon('photo_library', color='rose', size='sm')
-                            ui.label('Galería de Anexos').classes('text-lg font-bold text-slate-800')
+                            ui.label('Galería').classes('text-lg font-bold text-slate-800')
                         
-                        # Grid de 2 columnas para la barra lateral
+                        # Grid de 2 columnas
                         with ui.grid().classes('grid-cols-2 gap-3'):
-                            for i, img in enumerate(gallery_imgs):
-                                with ui.card().classes('w-full h-32 p-0 rounded-xl overflow-hidden cursor-pointer group shadow-sm transition-all hover:shadow-md border border-slate-100 relative'):
-                                    ui.html(f'<img src="{img}" style="width:100%; height:100%; object-fit:cover;" />', sanitize=False).classes('w-full h-full')
+                            for i, item_src in enumerate(gallery_items):
+                                
+                                is_video = item_src.lower().endswith('.mp4')
+                                
+                                # Tarjeta contenedora
+                                with ui.card().classes('w-full h-32 p-0 rounded-xl overflow-hidden cursor-pointer group shadow-sm transition-all hover:shadow-md border border-slate-100 relative bg-black'):
                                     
-                                    ui.element('div').classes('absolute inset-0 z-10').on('click', lambda src=img: open_lightbox(src))
+                                    if is_video:
+                                        # TRUCO: Usamos video HTML5 como miniatura.
+                                        # #t=0.5 intenta forzar al navegador a mostrar el frame del segundo 0.5 (evita pantalla negra inicial)
+                                        # preload="metadata" carga lo justo para mostrar la imagen
+                                        ui.html(f'''
+                                            <video src="{item_src}#t=0.5" 
+                                                   style="width:100%; height:100%; object-fit:cover;" 
+                                                   preload="metadata" 
+                                                   muted 
+                                                   playsinline>
+                                            </video>
+                                        ''', sanitize=False).classes('w-full h-full absolute inset-0')
+                                        
+                                        # Overlay con icono de Play (Encima del video)
+                                        with ui.column().classes('absolute inset-0 items-center justify-center bg-black/10 group-hover:bg-black/30 transition-colors z-10'):
+                                             ui.icon('play_circle_outline', size='3em', color='white').classes('opacity-90 drop-shadow-md')
+                                             
+                                    else:
+                                        # Imagen normal
+                                        ui.html(f'<img src="{item_src}" style="width:100%; height:100%; object-fit:cover;" />', sanitize=False).classes('w-full h-full')
+                                        
+                                        # Overlay hover para imágenes
+                                        with ui.element('div').classes('absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-10'):
+                                            ui.icon('zoom_in', color='white').classes('opacity-0 group-hover:opacity-100 transition-opacity')
                                     
-                                    with ui.element('div').classes('absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-0'):
-                                        ui.icon('zoom_in', color='white').classes('opacity-0 group-hover:opacity-100 transition-opacity')
+                                    # Click Handler para abrir Lightbox (Capa invisible superior)
+                                    ui.element('div').classes('absolute inset-0 z-20').on('click', lambda src=item_src: open_lightbox(src))
+                                    
+                                    # Overlay hover (Solo para imagenes, video ya tiene su UI)
+                                    if not is_video:
+                                        with ui.element('div').classes('absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-10'):
+                                            ui.icon('zoom_in', color='white').classes('opacity-0 group-hover:opacity-100 transition-opacity')
 
         # 3. SECCIÓN DE REVIEWS
         ui.separator().classes('my-8 bg-slate-200')

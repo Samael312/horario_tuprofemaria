@@ -24,10 +24,12 @@ from frontend.screen.MainAdminScreen.Mainpages.materialAdmin import materials_pa
 from frontend.screen.MainAdminScreen.Mainpages.workAdmin import homework_page
 from frontend.screen.MainScreen.Mainpages.material import student_materials_page
 from frontend.screen.MainScreen.Mainpages.work import student_homework_page
+from frontend.screen.adv_method import adv_method
 
 def init_ui():
     """Puente entre las pantallas de la app."""
     setup_auth_system()       # Esto crea /login y registra el middleware
+    adv_method()
     
     # Página principal (solo accesible si el usuario está autenticado)
     @ui.page('/')

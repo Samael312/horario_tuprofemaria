@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 
 @ui.page('/profile_edit')
 def profile_edit():
-    # Verificar sesión
+    # Verificar sesión de NiceGUI
     username = app.storage.user.get("username")
     if not username:
-        ui.label("No hay usuario en sesión").classes('text-negative mt-4')
+        ui.label("No hay usuario en sesión").classes('text-negative mt-4 text-xl font-bold p-4')
         return
 
     create_main_screen()
@@ -32,7 +32,7 @@ def profile_edit():
     try:
         user_obj = session.query(User).filter(User.username == username).first()
         if not user_obj:
-            ui.label("Usuario no encontrado en la Nube").classes('text-negative mt-4')
+            ui.label("Usuario no encontrado en la Nube").classes('text-negative mt-4 p-4')
             return
         
         # Inicializar estructura de datos para la tabla
@@ -60,12 +60,14 @@ def profile_edit():
                 # Cuerpo Tarjeta
                 with ui.grid(columns=2).classes('w-full p-6 gap-6'):
                     personal_inputs = {}
-                    
+
+                    # Configuración de campos (CORREGIDA)
+                    # Usamos getattr(obj, attr, default) directamente sobre user_obj
                     fields_config = [
-                        ('name', 'Nombre', user_obj.name, 'badge'),
-                        ('surname', 'Apellido', user_obj.surname, 'badge'),
-                        ('email', 'Correo', getattr(user_obj, 'email', ''), 'email'),
-                        ('time_zone', 'Zona Horaria', getattr(user_obj, 'time_zone', ''), 'schedule')
+                        ('name', 'Nombre', getattr(user_obj, 'name', ''), 'badge'),
+                        ('surname', 'Apellido', getattr(user_obj, 'surname', ''), 'badge'),
+                        ('email', 'Correo', getattr(user_obj, 'email', ''), 'email'), # Corrección aquí
+                        ('time_zone', 'Zona Horaria', getattr(user_obj, 'time_zone', 'UTC'), 'schedule') # Corrección aquí
                     ]
 
                     for field_key, label, value, icon in fields_config:
@@ -81,6 +83,21 @@ def profile_edit():
                                 inp = ui.input(value=value).props('outlined dense').classes('w-full')
                                 inp.add_slot('prepend', f'<q-icon name="{icon}" />')
                                 personal_inputs[field_key] = inp
+                    
+                    # Selector de Objetivo (Goal)
+                    # Recuperar valor actual y validarlo
+                    raw_goal = getattr(user_obj, 'goal', None)
+                    goal_value = raw_goal if raw_goal in goals_list else None
+
+                    with ui.column().classes('w-full gap-1'):
+                        ui.label('Objetivo de Aprendizaje').classes('text-sm font-semibold text-gray-600 ml-1')
+                        goal_selector = ui.select(
+                            options=sorted(goals_list),
+                            value=goal_value
+                        ).props('outlined dense').classes('w-full') 
+                        
+                        goal_selector.add_slot('prepend', '<q-icon name="assignment" />')
+                        personal_inputs['goal'] = goal_selector
 
             # =================================================
             # TARJETA 2: GESTIÓN DE HORARIOS Y PAQUETE
@@ -119,7 +136,6 @@ def profile_edit():
                                     options=sorted(pack_of_classes),
                                     value=package_value
                                 ).props('outlined dense disable').classes('w-full pointer-events-none') 
-                                # 'disable' lo bloquea visualmente. 'pointer-events-none' deja pasar el click al div padre.
                                 
                                 pkg_select.add_slot('prepend', '<q-icon name="inventory_2" />')
                                 rgh_inputs['package'] = pkg_select
@@ -182,8 +198,12 @@ def profile_edit():
                     schedule_data = session.query(SchedulePref).filter(SchedulePref.username == username).all()
                     if schedule_data:
                         for s in schedule_data:
-                            h_ini = f"{str(s.start_time).zfill(4)[:2]}:{str(s.start_time).zfill(4)[2:]}"
-                            h_fin = f"{str(s.end_time).zfill(4)[:2]}:{str(s.end_time).zfill(4)[2:]}"
+                            # Aseguramos formato correcto HH:MM incluso si viene como entero
+                            start_str = str(s.start_time).zfill(4)
+                            end_str = str(s.end_time).zfill(4)
+                            h_ini = f"{start_str[:2]}:{start_str[2:]}"
+                            h_fin = f"{end_str[:2]}:{end_str[2:]}"
+                            
                             texto_intervalo = f"{h_ini}-{h_fin}"
                             
                             if h_ini in local_group_data: local_group_data[h_ini][s.days] = texto_intervalo
@@ -233,15 +253,16 @@ def profile_edit():
                 # FASE 1: NEON
                 pg_session = PostgresSession()
                 try:
-                    # User
+                    # User update
                     u_pg = pg_session.query(User).filter(User.username == username).first()
                     if u_pg:
                         u_pg.name = user_update['name']
                         u_pg.surname = user_update['surname']
                         u_pg.time_zone = user_update['time_zone']
                         u_pg.email = user_update['email']
+                        u_pg.goal = user_update['goal'] # IMPORTANTE: Ahora guardamos el goal
                     
-                    # Schedules
+                    # Schedules update (Replace strategy)
                     pg_session.query(SchedulePref).filter(SchedulePref.username == username).delete()
                     for item in schedules_list:
                         pg_session.add(SchedulePref(**item))
@@ -254,7 +275,7 @@ def profile_edit():
                 finally:
                     pg_session.close()
 
-                # FASE 2: SQLITE
+                # FASE 2: SQLITE (Respaldo)
                 try:
                     sqlite_session = BackupSession()
                     u_sq = sqlite_session.query(User).filter(User.username == username).first()
@@ -263,6 +284,7 @@ def profile_edit():
                         u_sq.surname = user_update['surname']
                         u_sq.time_zone = user_update['time_zone']
                         u_sq.email = user_update['email']
+                        u_sq.goal = user_update['goal'] # También en el respaldo
                     
                     sqlite_session.query(SchedulePref).filter(SchedulePref.username == username).delete()
                     for item in schedules_list:
@@ -284,7 +306,8 @@ def profile_edit():
                     'name': personal_inputs['name'].value,
                     'surname': personal_inputs['surname'].value,
                     'time_zone': personal_inputs['time_zone'].value,
-                    'email': personal_inputs['email'].value
+                    'email': personal_inputs['email'].value,
+                    'goal': personal_inputs['goal'].value # Capturamos el goal del select
                 }
                 
                 pkg_val = rgh_inputs['package'].value
@@ -318,7 +341,6 @@ def profile_edit():
                                 except ValueError: pass
 
                 # --- Ejecutar Worker ---
-                # --- TRY / FINALLY PARA GARANTIZAR DISMISS ---
                 try:
                     notification = ui.notify("Guardando cambios...", type='ongoing', timeout=5000, icon='cloud_upload')
                     msgs = await run.io_bound(_persist_data_sync, username, user_data_update, new_schedules)
@@ -327,14 +349,15 @@ def profile_edit():
                     
                     ui.notify("Perfil actualizado correctamente", type='positive', icon='check_circle')
                     
+                    
                 except Exception as e:
                     logger.error(f"Error fatal: {e}")
                     ui.notify(f"Error al guardar: {e}", type='negative', close_button=True)
                 finally:
-                    # ESTO SE EJECUTA SIEMPRE
-                    notification.dismiss()
+                    if 'notification' in locals():
+                        notification.dismiss()
 
-            # --- BOTONES SEPARADOS ---
+            # --- BOTONES DE ACCIÓN ---
             with ui.row().classes('w-full justify-center gap-6 pt-6 pb-12'):
                 
                 # Botón Volver
@@ -346,9 +369,10 @@ def profile_edit():
                     .props('push color=positive size=lg').classes('px-8')
 
     finally:
+        # CERRAR LA SESIÓN DE CARGA INICIAL
         session.close()
 
-    # Lógica del botón agregar hora
+    # Lógica del botón agregar hora (vinculación final)
     make_add_hour_button(
         add_hour_btn,
         day_selector=day_selector,

@@ -44,10 +44,28 @@ def scheduleMaker():
             return 0
         finally:
             session.close()
+    
+    def get_renovations():
+        session = PostgresSession()
+        try:
+            user = (
+                session.query(User)
+                .filter(User.username == username)
+                .first()
+            )
+            return user.renovations if user else 0
+        except Exception as e:
+            logger.error(f"Error obteniendo renovaciones: {e}")
+            return 0
+        finally:
+            session.close()
+
 
     # Inicializamos estado
     lifetime_count = get_all_time_classes()
-    is_trial = (lifetime_count == 0)
+    reno = get_renovations()
+
+    is_trial = (lifetime_count == 0 and reno == 0)
 
     # 3. ESTADO REACTIVO
     state = {
@@ -179,7 +197,7 @@ def scheduleMaker():
         finally:
             session.close()
 
-    # --- CAMBIO 1: book_class ya no llama a update_dashboard ---
+    # --- BOOK CLASS ---
     async def book_class(slot_int):
         session = PostgresSession()
         try:
@@ -275,27 +293,32 @@ def scheduleMaker():
                 ui.button('Cancelar', on_click=d.close).props('unelevated color=red').classes('flex-1')
                 confirm_btn = ui.button('Reservar').props('unelevated color=green').classes('flex-1')
                 
-                # --- CAMBIO 2: Lógica optimizada del botón ---
                 async def do_book():
+                    # 1. Feedback visual
                     confirm_btn.props('loading')
+                    confirm_btn.disable()
+                    
+                    # CORRECCIÓN 1: Pausa para renderizar la UI antes de bloquear
+                    await asyncio.sleep(0.1) 
+                    
                     try:
-                        # 1. Guardar en DB (esperamos resultado booleano)
+                        # 2. Guardar en DB (Bloqueante)
                         success = await book_class(slot)
                         
                         if success:
-                            # 2. Cerrar UI INMEDIATAMENTE para respuesta rápida
+                            # 3. Éxito
                             d.close()
                             ui.notify("Clase agendada correctamente", type='positive', icon='check')
-                            
-                            # 3. Lanzar actualización en segundo plano
-                            # Esto permite que el diálogo desaparezca antes de que empiece la carga pesada
                             await update_dashboard() 
                         else:
-                            # Si falló (ej. límite alcanzado), solo quitamos loading
+                            # 4. Fallo lógico
                             confirm_btn.props(remove='loading')
+                            confirm_btn.enable()
 
                     except Exception as e:
+                        # 5. Excepción
                         confirm_btn.props(remove='loading')
+                        confirm_btn.enable()
                         ui.notify(str(e), type='negative')
                 
                 confirm_btn.on('click', do_book)
@@ -323,7 +346,6 @@ def scheduleMaker():
                 return
         except: return
 
-        # Esta función es la "pesada", ahora solo se ejecuta si loading es False
         current_duration = state['duration']
         all_slots = get_available_slots(state['date'], current_duration)
         pref_ranges = get_user_preferred_ranges(username, state['date'])
@@ -446,7 +468,7 @@ def scheduleMaker():
                         sess.commit()
                         ui.notify('Clase cancelada', type='info')
                         d.close()
-                        await update_dashboard() # Actualizamos también aquí
+                        await update_dashboard() 
                     except: pass
                     finally: sess.close()
                 del_btn.on('click', do_del)
@@ -485,20 +507,19 @@ def scheduleMaker():
                         ui.label(f"{total_lifetime} Clases").classes('font-bold text-slate-700')
                         ui.label("Agendadas en total").classes('text-[10px] text-slate-400')
 
-    # =================================================================
-    # LAYOUT & UPDATE
-    # =================================================================
-
-    # --- CAMBIO 3: update_dashboard ASÍNCRONO ---
+    # CORRECCIÓN 2: Lógica de dashboard optimizada para feedback visual inmediato
     async def update_dashboard():
-        # 1. Activamos carga visual inmediata
+        # 1. Activamos carga
         state['loading'] = True
         
-        # 2. Refrescamos 'slots' para que muestre el spinner
+        # 2. Refrescamos UI inmediatamente (Bloquea sidebar, Muestra spinner)
+        render_sidebar.refresh()
         render_slots_area.refresh()
         
-        # Refrescamos los componentes ligeros que no tardan (header, stats, my classes)
-        # Nota: Si get_all_time_classes tarda, también se podría mover, pero suele ser rápido.
+        # 3. Pausa para permitir repintado de UI
+        await asyncio.sleep(0.1)
+
+        # 4. Cálculos pesados
         lifetime_count = get_all_time_classes()
         is_trial_now = (lifetime_count == 0)
         
@@ -510,26 +531,25 @@ def scheduleMaker():
         render_my_classes.refresh()
         render_stats_widget.refresh()
 
-        # 3. Importante: Cedemos el control al event loop para que la UI se pinte (se vea el spinner)
-        await asyncio.sleep(0.1)
-        
-        # 4. Desactivamos carga
+        # 5. Finalizamos carga y desbloqueamos
         state['loading'] = False
-        
-        # 5. Volvemos a refrescar slots. Como loading es False, ahora ejecutará 'get_available_slots'
-        #    y la UI se sentirá fluida porque ya vimos el spinner.
+        render_sidebar.refresh()
         render_slots_area.refresh()
 
     async def on_date_change(e):
         await update_dashboard()
 
+    # CORRECCIÓN 3: Decorador y propiedad disable dinámica
+    @ui.refreshable
     def render_sidebar():
         with ui.column().classes('w-full gap-6'):
             with ui.card().classes('w-full p-4 rounded-2xl shadow-sm border border-slate-100 bg-white'):
+                is_disabled = state.get('loading', False)
                 ui.date(value=state['date']) \
                     .bind_value(state, 'date') \
                     .on('update:model-value', on_date_change) \
-                    .props('flat color=rose class="w-full"')
+                    .props(f'flat color=rose class="w-full" {"disable" if is_disabled else ""}')
+            
             render_stats_widget()
 
     @ui.refreshable

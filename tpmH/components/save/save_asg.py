@@ -162,6 +162,7 @@ def create_save_asgn_classes(button, user, table_clases, table_rangos, duration_
                 ))
 
             pg_session.commit()
+            ui.navigate.to('/myclasses')
             logger.info("✅ Datos guardados en NEON")
 
         except Exception as e:

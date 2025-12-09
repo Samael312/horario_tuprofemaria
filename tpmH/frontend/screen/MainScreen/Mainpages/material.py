@@ -99,17 +99,13 @@ def student_materials_page():
                     with ui.card().classes(card_classes):
                         
                         # --- ZONA DE PREVISUALIZACIÓN (PORTADA) ---
-                        # Altura fija para uniformidad
                         with ui.element('div').classes('w-full h-32 flex items-center justify-center relative'):
                             if file_info['type'] == 'image':
-                                # Si es imagen, la mostramos
                                 ui.image(f"/uploads/{item['file']}").classes('w-full h-full object-cover')
                             else:
-                                # Si es doc, mostramos fondo de color e icono
                                 with ui.element('div').classes(f"w-full h-full bg-{file_info['color']} flex items-center justify-center"):
                                     ui.icon(file_info['icon'], size='4xl', color=file_info['text'])
                             
-                            # Badge de Nivel flotante
                             ui.label(item['level']).classes('absolute top-2 right-2 bg-white/90 px-2 py-1 rounded-md text-xs font-bold shadow-sm')
 
                         # --- CONTENIDO ---
@@ -119,12 +115,22 @@ def student_materials_page():
                             
                             ui.separator()
                             
-                            # --- BOTONES ---
+                            # --- BARRA DE ACCIONES ---
                             with ui.row().classes('w-full justify-between items-center'):
-                                ui.button('Abrir', icon='open_in_new', 
-                                          on_click=lambda x=item['file']: ui.navigate.to(f'/uploads/{x}', new_tab=True)) \
-                                    .props('flat dense size=sm color=slate no-caps')
+                                
+                                # Grupo de botones izquierda (Abrir y Descargar)
+                                with ui.row().classes('gap-1'):
+                                    # Botón Abrir
+                                    ui.button('Abrir', icon='open_in_new', 
+                                              on_click=lambda x=item['file']: ui.navigate.to(f'/uploads/{x}', new_tab=True)) \
+                                        .props('flat dense size=sm color=slate no-caps')
+                                    
+                                    # Botón Descargar (NUEVO)
+                                    ui.button(icon='cloud_download', 
+                                              on_click=lambda x=item['file']: ui.download(f'/uploads/{x}')) \
+                                        .props('flat dense size=sm color=indigo round').tooltip('Descargar archivo')
 
+                                # Botón Estado (Derecha)
                                 check_icon = 'check_circle' if is_done else 'radio_button_unchecked'
                                 check_col = 'green' if is_done else 'grey'
                                 

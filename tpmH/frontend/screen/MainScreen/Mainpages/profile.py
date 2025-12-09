@@ -46,11 +46,14 @@ def profile():
                     ui.fab_action(icon='delete_forever', label='Eliminar cuenta', on_click=confirm_delete, color='red')
 
             # --- GRID LAYOUT (Responsive) ---
-            # Mobile: 1 columna | Desktop: 3 columnas (1 izq + 2 der)
-            with ui.grid().classes('w-full grid-cols-1 lg:grid-cols-3 gap-6 items-start'):
+            # CAMBIO CLAVE: lg:grid-cols-[auto_1fr] 
+            # Esto significa: "En pantallas grandes, la 1ra columna es automática (según contenido) y la 2da llena el resto".
+            with ui.grid().classes('w-full grid-cols-1 lg:grid-cols-[auto_1fr] gap-6 items-start'):
                 
                 # === COLUMNA IZQUIERDA (Info + Plan) ===
-                with ui.column().classes('w-full gap-6 lg:col-span-1'):
+                # CAMBIO: Quitamos 'lg:col-span-1' y 'w-full'. 
+                # Ponemos 'min-w-[300px]' para asegurar que no sea demasiado estrecha si no hay datos.
+                with ui.column().classes('w-full lg:w-auto min-w-[300px] gap-6'):
                     
                     # 1. Tarjeta Datos Personales
                     with ui.card().classes('w-full p-0 shadow-md rounded-xl overflow-hidden border border-gray-100'):
@@ -60,16 +63,18 @@ def profile():
 
                         with ui.column().classes('w-full p-5 gap-4'):
                             def info_item(label, value, icon):
+                                # Usamos no-wrap para que el texto no fuerce saltos de linea extraños y defina el ancho
                                 with ui.row().classes('w-full items-center gap-3'):
-                                    with ui.element('div').classes('p-2 bg-pink-50 rounded-full'):
+                                    with ui.element('div').classes('p-2 bg-pink-50 rounded-full shrink-0'): # shrink-0 evita que el icono se aplaste
                                         ui.icon(icon, color='pink-500', size='xs')
                                     with ui.column().classes('gap-0'):
-                                        ui.label(label).classes('text-[10px] font-bold text-gray-400 uppercase tracking-wide')
+                                        ui.label(label).classes('text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap')
                                         ui.label(str(value)).classes('text-sm text-gray-800 font-medium break-all')
                             
                             info_item('Nombre Completo', f"{user_obj.name} {user_obj.surname}", 'face')
                             info_item('Usuario', user_obj.username, 'alternate_email')
                             info_item('Email', getattr(user_obj, 'email', 'N/A'), 'mail')
+                            info_item('Objetivo', getattr(user_obj, 'goal', 'Objetivo'), 'assignment')
                             info_item('Zona Horaria', getattr(user_obj, 'time_zone', 'UTC'), 'public')
 
                     # 2. Tarjeta Paquete
@@ -79,19 +84,21 @@ def profile():
                             with ui.row().classes('w-full p-4 bg-pink-600 items-center justify-between'):
                                 with ui.row().classes('items-center gap-2'):
                                     ui.icon('card_membership', color='white')
-                                    ui.label("Plan Activo").classes('text-white font-bold')
+                                    # whitespace-nowrap asegura que este titulo dicte el ancho minimo si es muy largo
+                                    ui.label("Plan Activo").classes('text-white font-bold whitespace-nowrap')
                                 ui.icon('verified', color='white')
                             
                             with ui.column().classes('w-full p-6 items-center text-center'):
-                                ui.label(rgh_obj.package).classes('text-2xl font-black text-gray-800 uppercase tracking-wide')
-                                ui.label('Suscripción vigente').classes('text-xs text-green-700 font-bold bg-green-100 px-3 py-1 rounded-full mt-2')
+                                ui.label(rgh_obj.package).classes('text-2xl font-black text-gray-800 uppercase tracking-wide whitespace-nowrap')
+                                ui.label('Suscripción vigente').classes('text-xs text-green-700 font-bold bg-green-100 px-3 py-1 rounded-full mt-2 whitespace-nowrap')
                         else:
                             with ui.column().classes('w-full p-8 items-center text-center bg-gray-50'):
                                 ui.icon('sentiment_dissatisfied', size='lg', color='gray-400')
-                                ui.label("Sin plan activo").classes('text-gray-500 font-medium mt-2')
-
+                                ui.label("Sin plan activo").classes('text-gray-500 font-medium mt-2 whitespace-nowrap')
                 # === COLUMNA DERECHA (Tabs) ===
-                with ui.column().classes('w-full gap-6 lg:col-span-2'):
+                # CAMBIO: Quitamos 'lg:col-span-2' y agregamos 'min-w-0'.
+                # 'min-w-0' es CRÍTICO para que las tablas no rompan el diseño responsive.
+                with ui.column().classes('w-full gap-6 min-w-0'):
                     
                     with ui.card().classes('w-full shadow-md rounded-xl overflow-hidden border border-gray-100 p-0 min-h-[400px]'):
                         # Tabs Header
@@ -103,14 +110,14 @@ def profile():
                         # Panels
                         with ui.tab_panels(tabs, value=t_assigned).classes('w-full p-0'):
                             
-                            # PANEL: TUS CLASES (Incluye Prueba_Pendiente)
+                            # PANEL: TUS CLASES
                             with ui.tab_panel(t_assigned).classes('p-0'):
-                                # Consulta ampliada para incluir todos los estados relevantes
+                                # Consulta
                                 assigned_data = session.query(AsignedClasses).filter(
                                     AsignedClasses.username == username,
                                     AsignedClasses.status.in_([
                                         'Pendiente', 
-                                        'Prueba_Pendiente', # <--- AÑADIDO
+                                        'Prueba_Pendiente',
                                         'Agendada', 
                                         'Completada', 
                                         'Finalizada'
@@ -122,10 +129,9 @@ def profile():
                                         ui.icon('event_busy', size='4xl', color='gray-300')
                                         ui.label("No tienes historial de clases.").classes('mt-4 text-sm')
                                 else:
-                                    # Preparar datos para tabla
+                                    # Preparar datos
                                     rows_a = []
                                     for a in assigned_data:
-                                        # Formato hora HH:MM
                                         h_start = f"{str(a.start_time).zfill(4)[:2]}:{str(a.start_time).zfill(4)[2:]}"
                                         status_clean = a.status.replace('_', ' ')
                                         
@@ -134,7 +140,7 @@ def profile():
                                             'Día': a.days,
                                             'Hora': h_start,
                                             'Estado': status_clean,
-                                            'raw_status': a.status # Para lógica de color
+                                            'raw_status': a.status
                                         })
                                     
                                     cols_a = [
@@ -147,7 +153,7 @@ def profile():
                                     table_a = ui.table(columns=cols_a, rows=rows_a, pagination={'rowsPerPage': 8})\
                                         .classes('w-full').props('flat bordered separator=horizontal')
                                     
-                                    # Slot para colorear el estado
+                                    # Slot coloreado
                                     table_a.add_slot('body-cell-estado', '''
                                         <q-td key="estado" :props="props">
                                             <q-badge :color="

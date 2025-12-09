@@ -55,5 +55,5 @@ def main_admin_screen():
                 
     # Footer decorativo opcional    
     with ui.footer().classes('bg-transparent text-gray-400 justify-center pb-4'):
-        ui.label('© 2024 TuProfeMaria - Panel de Administración').classes('text-sm text-gray-500')  
+        ui.label('© 2025 TuProfeMaria - Panel de Administración').classes('text-sm text-gray-500')  
             

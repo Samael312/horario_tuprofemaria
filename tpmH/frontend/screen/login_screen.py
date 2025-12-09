@@ -13,7 +13,7 @@ from db.models import User
 # =====================================================
 # CONFIGURACIÓN
 # =====================================================
-unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage'}
+unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage', '/method'}
 
 # =====================================================
 # MIDDLEWARE DE AUTENTICACIÓN
@@ -179,7 +179,7 @@ def setup_auth_system():
                 # Botones Secundarios (Registro y Reset)
                 with ui.column().classes('w-full items-center gap-2'):
                     # Crear cuenta (Botón secundario destacado)
-                    ui.button('Crear cuenta nueva', on_click=lambda: ui.navigate.to('/signup')) \
+                    ui.button('Crear cuenta nueva', on_click=lambda: ui.navigate.to('/method')) \
                         .props('outline color=primary') \
                         .classes('w-full rounded-lg')
                     
