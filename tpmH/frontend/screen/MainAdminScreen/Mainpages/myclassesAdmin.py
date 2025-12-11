@@ -3,8 +3,11 @@ from datetime import datetime, timedelta
 import logging
 import asyncio  # Importamos asyncio para corregir el error del loop
 from zoneinfo import ZoneInfo # Para manejo preciso de zonas al reagendar
-
-
+from dateutil import parser # Necesario para parsear fechas de Google
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from auth.sync_cal import sync_google_calendar_logic
+import os
 from db.postgres_db import PostgresSession
 from db.sqlite_db import BackupSession
 from db.models import AsignedClasses, User, ScheduleProf, ScheduleProfEsp, SchedulePref
@@ -42,40 +45,92 @@ def my_classesAdmin():
     
     create_admin_screen()
 
+    # Almacenamos los valores de los filtros aquí
+    filters = {
+        'student': None,       # Texto libre (Nombre/Apellido)
+        'region': None,     # Zona horaria seleccionada
+        'time_of_day': None # 'Mañana', 'Tarde', 'Noche'
+    }
+
+    # ==============================================================================
+    # 1. FUNCIÓN MANEJADORA DEL BOTÓN (UI)
+    # ==============================================================================
+    async def run_sync():
+        """
+        Llama a la lógica de sync_cal.py en un hilo separado
+        para no congelar la interfaz gráfica.
+        """
+        notification = ui.notification(timeout=None)
+        notification.message = 'Sincronizando Google Calendar...'
+        notification.spinner = True
+        
+        try:
+            # Obtenemos email de variable de entorno
+            teacher_email = os.getenv('CALENDAR_ID')
+            if not teacher_email:
+                notification.dismiss()
+                ui.notify('Error: Falta configurar CALENDAR_ID en las variables de entorno de Render', type='negative')
+                return
+
+            # Ejecutar la función pesada (sync_google_calendar_logic) en un hilo aparte
+            # Esto es vital en NiceGUI para mantener la app fluida
+            count = await asyncio.to_thread(sync_google_calendar_logic, teacher_email)
+            
+            notification.dismiss()
+            
+            if count > 0:
+                ui.notify(f'¡Éxito! Se importaron {count} clases nuevas.', type='positive')
+                refresh_ui() # Recargar la tabla automáticamente
+            else:
+                ui.notify('Sincronización completada. No se encontraron clases nuevas.', type='info')
+                
+        except Exception as e:
+            notification.dismiss()
+            logger.error(f"Sync Error: {e}")
+            ui.notify(f'Error al sincronizar: {str(e)}', type='negative')
+    
     # 1. LOGICA DE DATOS
     def get_all_classes():
+        """
+        Obtiene todas las clases de la BD y extrae las regiones (TimeZones) únicas 
+        para llenar el selector de filtros dinámicamente.
+        """
         session = PostgresSession()
         try:
-            # Traemos TODAS las clases
             all_classes = session.query(AsignedClasses).all()
-            
-            # Mapa de TimeZones
             users = session.query(User).all()
             user_tz_map = {u.username: (u.time_zone or 'UTC') for u in users}
             
             now = datetime.now()
             now_date_str = now.strftime('%Y-%m-%d')
+            current_full_int = int(now.strftime("%Y%m%d%H%M"))
             
             today_classes = []
             upcoming_classes = []
             history_classes = []
             
-            for c in all_classes:
-                # Adjuntar TimeZone
-                c.student_tz = user_tz_map.get(c.username, 'UTC')
+            unique_regions = set() # Set para guardar zonas horarias únicas encontradas
+            unique_students = set() # Set para nombres únicos
 
-                # Lógica de Tiempo Profesora
+            for c in all_classes:
+                # Adjuntar TimeZone al objeto y guardarlo para el filtro
+                c.student_tz = user_tz_map.get(c.username, 'UTC')
+                unique_regions.add(c.student_tz)
+
+                full_name = f"{c.name} {c.surname}".strip()
+                unique_students.add(full_name)
+
+                # Determinar tiempo de inicio (Profesor o Estudiante como fallback)
                 p_start = c.start_prof_time if getattr(c, 'start_prof_time', None) is not None else c.start_time
                 p_date = getattr(c, 'date_prof', None) or c.date
                 
+                # Crear entero de fecha+hora para ordenamiento
                 if p_date and p_start is not None:
                     c_full_int = int(p_date.replace('-', '') + str(p_start).zfill(4))
                 else:
                     c_full_int = 0 
 
-                current_full_int = int(now.strftime("%Y%m%d%H%M"))
-
-                # Prioridad a la fecha de HOY
+                # Clasificación en listas
                 if p_date == now_date_str:
                     if c.status in FINALIZED_STATUSES:
                         history_classes.append(c)
@@ -97,12 +152,46 @@ def my_classesAdmin():
             upcoming_classes.sort(key=sort_key_prof)
             history_classes.sort(key=sort_key_prof, reverse=True)
             
-            return today_classes, upcoming_classes, history_classes
+            # Retornamos las listas clasificadas Y las regiones ordenadas
+            return today_classes, upcoming_classes, history_classes, sorted(list(unique_regions)), sorted(list(unique_students))
+            
         except Exception as e:
             logger.error(f"Error fetching admin classes: {e}")
-            return [], [], []
+            return [], [], [], []
         finally:
             session.close()
+    
+    def filter_list(class_list):
+        """Aplica los filtros activos a una lista."""
+        filtered = []
+        # Obtenemos valores limpios de los filtros
+        f_student = filters['student']
+        f_region = filters['region']
+        f_time = filters['time_of_day']
+
+        for c in class_list:
+            # 1. Filtro Estudiante (Selector)
+            if f_student and f_student != 'Todos':
+                full_name = f"{c.name} {c.surname}".strip()
+                if full_name != f_student:
+                    continue
+            
+            # 2. Filtro Región
+            if f_region and f_region != 'Todas':
+                if c.student_tz != f_region:
+                    continue
+            
+            # 3. Filtro Hora
+            if f_time and f_time != 'Todos':
+                t = c.start_prof_time if c.start_prof_time is not None else c.start_time
+                if t is None: t = 0
+                
+                if f_time == 'Mañana' and t >= 1200: continue
+                if f_time == 'Tarde' and not (1200 <= t < 1900): continue
+                if f_time == 'Noche' and t < 1900: continue
+
+            filtered.append(c)
+        return filtered
 
     async def update_status(c_id, new_status):
         session = PostgresSession()
@@ -634,57 +723,115 @@ def my_classesAdmin():
 
     @ui.refreshable
     def render_content():
-        today, upcoming, history = get_all_classes()
+        # 1. Obtener Datos (Crudos + Regiones disponibles)
+        today_raw, upcoming_raw, history_raw, available_regions, available_students = get_all_classes()
         
-        today_pending = sum(1 for c in today if 'Pendiente' in c.status)
-        today_done = sum(1 for c in today if c.status == 'Completada')
+        # 2. Filtrar Datos
+        # Aplicamos la función filter_list a cada conjunto de datos
+        filtered_today = filter_list(today_raw)
+        filtered_upcoming = filter_list(upcoming_raw)
+        filtered_history = filter_list(history_raw)
+
+        # 3. Calcular Estadísticas (Basadas en lo que se ve en pantalla)
+        today_pending = sum(1 for c in filtered_today if 'Pendiente' in c.status)
+        today_done = sum(1 for c in filtered_today if c.status == 'Completada')
 
         with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-6'):
             
             # HEADER
-            with ui.row().classes('w-full justify-between items-center'):
-                with ui.row().classes('items-center gap-2'):
-                    ui.icon('book', size='lg', color='pink-600')
-                    with ui.column().classes('gap-0'):
-                        ui.label('Gestión de Clases').classes('text-2xl font-bold text-slate-800')
-                        with ui.row().classes('items-center gap-1'):
-                            ui.icon('public', size='xs', color='rose')
-                            ui.label('Horarios convertidos a tu zona local').classes('text-sm text-rose-500 font-medium')
+            with ui.row().classes('w-full justify-between items-center py-4 border-b border-slate-100'):
+                
+                # --- SECCIÓN IZQUIERDA: TÍTULO E ICONO ---
+                with ui.row().classes('items-center gap-3'):
+                    with ui.element('div').classes('p-2 bg-pink-50 rounded-lg flex items-center justify-center'):
+                        ui.icon('local_library', size='md', color='pink-600')
                     
-                ui.button(icon='refresh', on_click=refresh_ui).props('flat round color=slate')
+                    with ui.column().classes('gap-0'):
+                        ui.label('Gestión de Clases').classes('text-xl font-bold text-slate-800 tracking-tight')
+                        with ui.row().classes('items-center gap-1.5'):
+                            ui.icon('public', size='xs').classes('text-slate-400')
+                            ui.label('Zona horaria local detectada').classes('text-xs text-slate-500 font-medium')
+
+                # --- SECCIÓN DERECHA: ACCIONES ---
+                with ui.row().classes('items-center gap-3'):
+                    ui.button('Sincronizar', on_click=run_sync, icon='sync_alt') \
+                        .props('flat no-caps') \
+                        .classes('text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-full px-5 py-2 text-sm font-semibold transition-all duration-300 shadow-sm') \
+                        .tooltip('Importar desde Google Calendar')
+
+                    ui.button(icon='refresh', on_click=refresh_ui) \
+                        .props('flat round dense') \
+                        .classes('text-slate-400 hover:text-slate-700 hover:rotate-180 transition-all duration-500') \
+                        .tooltip('Actualizar vista')
+            
+            # --- BARRA DE FILTROS ---
+            with ui.card().classes('w-full p-4 rounded-xl bg-white border border-slate-100 shadow-sm'):
+                with ui.row().classes('w-full items-center gap-4 flex-wrap'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('filter_list', color='slate-400')
+                        ui.label('Filtros:').classes('font-bold text-slate-600 mr-2')
+                    
+                   # 1. SELECT ESTUDIANTE (Antes Input, ahora Select con buscador)
+                    # use_input=True habilita escritura para buscar en la lista
+                    stud_opts = ['Todos'] + available_students
+                    ui.select(options=stud_opts, value=filters['student'] or 'Todos', label='Estudiante', with_input=True) \
+                        .bind_value(filters, 'student') \
+                        .on('update:model-value', refresh_ui) \
+                        .props('outlined dense options-dense behavior="menu"').classes('flex-1 min-w-[200px]')
+                    
+                    # 2. Región (Dinámico)
+                    region_opts = ['Todas'] + available_regions
+                    ui.select(options=region_opts, value=filters['region'] or 'Todas', label='Región') \
+                        .bind_value(filters, 'region') \
+                        .on('update:model-value', refresh_ui) \
+                        .props('outlined dense options-dense behavior="menu"').classes('w-48')
+                    
+                    # 3. Momento del Día
+                    time_opts = ['Todos', 'Mañana', 'Tarde', 'Noche']
+                    ui.select(options=time_opts, value=filters['time_of_day'] or 'Todos', label='Horario') \
+                        .bind_value(filters, 'time_of_day') \
+                        .on('update:model-value', refresh_ui) \
+                        .props('outlined dense options-dense behavior="menu"').classes('w-40')
 
             # STATS
             with ui.row().classes('w-full gap-4 flex-wrap'):
-                render_stat_card('Clases Hoy', len(today), 'blue')
+                render_stat_card('Clases Hoy (Filtro)', len(filtered_today), 'blue')
                 render_stat_card('Pendientes Hoy', today_pending, 'orange')
                 render_stat_card('Completadas Hoy', today_done, 'green')
 
-            # SECCIONES
-            if today:
+            # SECCIONES (Usando listas FILTRADAS)
+            if filtered_today:
                 with ui.column().classes('w-full gap-3 mt-4'):
                     with ui.row().classes('items-center gap-2'):
                         ui.icon('today', color='rose', size='sm')
                         ui.label('Agenda de Hoy').classes('text-lg font-bold text-slate-800')
-                    for c in today:
+                    for c in filtered_today:
                         render_admin_class_card(c)
-            elif not upcoming:
+            # Solo mostrar mensaje si NO hay filtros activos y la lista original está vacía, o si hay filtros y no hay resultados
+            elif not filters['student'] and not filters['region'] and not filters['time_of_day']: 
                 ui.label('No hay clases pendientes para hoy.').classes('text-slate-400 italic mt-4')
 
             ui.separator().classes('bg-slate-200 my-2')
 
             with ui.expansion('Próximas Sesiones', icon='calendar_month', value=True).classes('w-full bg-white border border-slate-100 rounded-xl shadow-sm'):
                 with ui.column().classes('w-full p-4 gap-3'):
-                    if not upcoming:
-                        ui.label('No hay clases futuras pendientes.').classes('text-slate-400 italic')
-                    for c in upcoming:
+                    if not filtered_upcoming:
+                        ui.label('No hay clases futuras encontradas con este filtro.').classes('text-slate-400 italic')
+                    for c in filtered_upcoming:
                         render_admin_class_card(c)
 
             with ui.expansion('Historial', icon='history').classes('w-full bg-slate-50 border border-slate-100 rounded-xl'):
                 with ui.column().classes('w-full p-4 gap-3'):
-                    if not history:
-                        ui.label('Historial vacío.').classes('text-slate-400 italic')
-                    for c in history:
+                    if not filtered_history:
+                        ui.label('Historial vacío o sin coincidencias.').classes('text-slate-400 italic')
+                    for c in filtered_history:
                         render_admin_class_card(c, is_history=True)
+
+            # EMPTY STATE GLOBAL (Si todo está vacío por filtros)
+            if not filtered_today and not filtered_upcoming and not filtered_history:
+                 with ui.column().classes('w-full items-center py-12 opacity-50'):
+                    ui.icon('search_off', size='4xl', color='slate-300')
+                    ui.label('No se encontraron clases con estos filtros').classes('text-slate-400 font-medium')
 
     def refresh_ui():
         render_content.refresh()
