@@ -1,2 +1,6 @@
 *.pyc
 __pycache__/
+
+credentials.json
+tpmH/credentials.json
+.env

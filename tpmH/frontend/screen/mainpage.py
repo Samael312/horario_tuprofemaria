@@ -21,19 +21,6 @@ if not static_dir.exists():
 else:
     app.add_static_files('/static', str(static_dir))
 
-unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage', '/method','/planScreen'}
-
-class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if not app.storage.user.get('authenticated', False):
-            if request.url.path == '/':
-                return RedirectResponse('/MainPage')
-            if (not request.url.path.startswith('/_nicegui') 
-                and not request.url.path.startswith('/static') 
-                and not request.url.path.startswith('/uploads')
-                and request.url.path not in unrestricted_page_routes):
-                return RedirectResponse(f'/login?redirect_to={request.url.path}')
-        return await call_next(request)
 
 # =====================================================
 # TRADUCCIONES

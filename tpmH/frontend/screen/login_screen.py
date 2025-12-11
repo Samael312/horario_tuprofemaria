@@ -11,34 +11,6 @@ from db.models import User
 # ------------------------------------------------------------------
 
 # =====================================================
-# CONFIGURACIÓN
-# =====================================================
-unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage', '/method','/planScreen'}
-
-# =====================================================
-# MIDDLEWARE DE AUTENTICACIÓN
-# =====================================================
-class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if not app.storage.user.get('authenticated', False):
-            # 1. Redirección de raíz
-            if request.url.path == '/':
-                return RedirectResponse('/MainPage')
-            
-            # 2. Excepciones de seguridad (AQUÍ ESTABA EL PROBLEMA)
-            # Permitimos:
-            # - /_nicegui (archivos internos)
-            # - /static (tus imágenes y videos) <--- NUEVO
-            # - Rutas públicas (login, signup, etc)
-            if (not request.url.path.startswith('/_nicegui') 
-                and not request.url.path.startswith('/static') 
-                and not request.url.path.startswith('/uploads')
-                and request.url.path not in unrestricted_page_routes):
-                
-                return RedirectResponse(f'/login?redirect_to={request.url.path}')
-        
-        return await call_next(request)
-# =====================================================
 # UI PRINCIPAL (HEADER + LAYOUT GENERAL)
 # =====================================================
 def create_ui(content_function=None):
@@ -82,7 +54,7 @@ def create_ui(content_function=None):
 # SISTEMA DE AUTENTICACIÓN Y LOGIN
 # =====================================================
 def setup_auth_system():
-    app.add_middleware(AuthMiddleware)
+    
 
     @ui.page('/login')
     def login(redirect_to: str = '/') -> Optional[RedirectResponse]:
