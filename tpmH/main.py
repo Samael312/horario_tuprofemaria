@@ -12,15 +12,21 @@ load_dotenv()
 
 # 2. CONFIGURACIÓN DE RUTAS (CRÍTICO PARA RENDER)
 # BASE_DIR será la carpeta 'tpmH'
+# BASE_DIR será la carpeta 'tpmH'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Definir rutas absolutas
 
 # Definir rutas absolutas
 db_dir = os.path.join(BASE_DIR, 'db')
 components_dir = os.path.join(BASE_DIR, 'components')
 uploads_dir = os.path.join(BASE_DIR, 'uploads') # <--- Agregamos uploads aquí
+uploads_dir = os.path.join(BASE_DIR, 'uploads') # <--- Agregamos uploads aquí
 
 # Crear carpetas necesarias si no existen
+# Crear carpetas necesarias si no existen
 os.makedirs(db_dir, exist_ok=True)
+os.makedirs(uploads_dir, exist_ok=True) # <--- Aseguramos que uploads exista
 os.makedirs(uploads_dir, exist_ok=True) # <--- Aseguramos que uploads exista
 
 # 3. INICIALIZAR BASES DE DATOS
@@ -41,6 +47,7 @@ logger = logging.getLogger(__name__)
 # =====================================================
 
 unrestricted_page_routes = {
+    '/login', '/signup', '/reset', '/MainPage', '/method', '/planScreen'
     '/login', '/signup', '/reset', '/MainPage', '/method', '/planScreen'
 }
 
@@ -94,6 +101,9 @@ def main():
     # 2. SERVIR ARCHIVOS ESTÁTICOS (CENTRALIZADO)
     
     # A. Components (Usamos /components para coincidir con teacher.py)
+    # 2. SERVIR ARCHIVOS ESTÁTICOS (CENTRALIZADO)
+    
+    # A. Components (Usamos /components para coincidir con teacher.py)
     if os.path.exists(components_dir):
         app.add_static_files('/components', components_dir)
         # Opcional: También servir como /static por compatibilidad
@@ -106,7 +116,19 @@ def main():
     if os.path.exists(uploads_dir):
         app.add_static_files('/uploads', uploads_dir)
         logger.info(f"📂 Uploads montado en: {uploads_dir}")
+        app.add_static_files('/components', components_dir)
+        # Opcional: También servir como /static por compatibilidad
+        app.add_static_files('/static', components_dir) 
+        logger.info(f"📂 Components montado en: {components_dir}")
     else:
+        logger.warning(f"⚠️ NO se encontró components: {components_dir}")
+
+    # B. Uploads (CRÍTICO: Aquí arreglamos el error de 'Not Found')
+    if os.path.exists(uploads_dir):
+        app.add_static_files('/uploads', uploads_dir)
+        logger.info(f"📂 Uploads montado en: {uploads_dir}")
+    else:
+        logger.warning("⚠️ Carpeta uploads no creada, aunque se intentó crear.")
         logger.warning("⚠️ Carpeta uploads no creada, aunque se intentó crear.")
 
     # 3. Iniciar UI
@@ -126,9 +148,11 @@ if __name__ in {'__main__', '__mp_main__'}:
     favicon_path = os.path.join(components_dir, 'icon', 'logo.png')
     if not os.path.exists(favicon_path):
         favicon_path = None
+        favicon_path = None
 
     ui.run(
         title="Tuprofemaria: Tu clase, tu ritmo, tu ingles",
+        reload=False,
         reload=False,
         storage_secret=os.environ.get('STORAGE_SECRET', 'clave_secreta_default_segura'),
         favicon=favicon_path,
