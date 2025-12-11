@@ -11,10 +11,25 @@ from db.models import Base, TeacherProfile, User
 # Configurar logger
 logger = logging.getLogger(__name__)
 
-# --- CONFIGURACIÓN DE UPLOAD ---
-UPLOAD_DIR = 'uploads'
+# =====================================================
+# CORRECCIÓN DE RUTAS Y EVITAR CONFLICTOS
+# =====================================================
+
+# 1. Definir ruta absoluta (Seguro para Render)
+# Usamos os.getcwd() para asegurar que se crea en la raíz donde corre main.py
+UPLOAD_DIR = os.path.abspath(os.path.join(os.getcwd(), 'uploads'))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.add_static_files('/uploads', UPLOAD_DIR)
+
+# 2. Montar archivos estáticos DE FORMA SEGURA
+# Usamos try-except por si 'MaterialsAdmin' o 'main.py' ya montaron '/uploads'
+try:
+    app.add_static_files('/uploads', UPLOAD_DIR)
+    logger.info(f"📂 (TeacherEdit) Carpeta uploads montada: {UPLOAD_DIR}")
+except RuntimeError:
+    # Si ya estaba montada, perfecto, no hacemos nada y evitamos el crash
+    logger.info("ℹ️ La ruta /uploads ya estaba gestionada por otro módulo.")
+
+# =====================================================
 
 # Habilidades predefinidas
 PRESET_SKILLS = [
@@ -168,7 +183,7 @@ def teacherAdmin():
     # --- LÓGICA DE UPLOAD ROBUSTA (GALERÍA - DISCO) ---
     async def handle_gallery_disk_upload(e):
         try:
-            # 1. Extracción de datos segura (Corrige el error de Attribute)
+            # 1. Extracción de datos segura
             filename = "unknown_file"
             data = None
 
@@ -197,7 +212,7 @@ def teacherAdmin():
             if not data:
                 raise Exception("No se pudieron leer los datos del archivo.")
 
-            # 2. Guardar en disco
+            # 2. Guardar en disco (Ruta absoluta segura)
             # Limpiamos el nombre de espacios
             filename = filename.replace(" ", "_")
             filepath = os.path.join(UPLOAD_DIR, filename)

@@ -1,30 +1,28 @@
 ﻿import logging
 import os
 from fastapi import Request
-from nicegui import ui, app # <--- IMPORTANTE: Importamos 'app'
+from nicegui import ui, app
 from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from dotenv import load_dotenv  
+from dotenv import load_dotenv
 from frontend.ui import init_ui
 
-# 2. CARGAR VARIABLES DE ENTORNO ANTES DE NADA
-load_dotenv() 
+# 1. CARGAR VARIABLES DE ENTORNO
+load_dotenv()
 
-# 3. INICIALIZAR LAS BASES DE DATOS
-import db.postgres_db
-import db.sqlite_db  
-
-# =====================================================
-# PRE-CONFIGURACIÓN 
-# =====================================================
-# Esta es la ruta base de tu proyecto (donde está main.py)
+# 2. CONFIGURACIÓN DE RUTAS (CRÍTICO PARA RENDER)
+# Esto asegura que encontremos las carpetas sin importar desde dónde se ejecuta el comando
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Rutas importantes
 db_dir = os.path.join(BASE_DIR, 'db')
-components_dir = os.path.join(BASE_DIR, 'components') # <--- Ruta a tus recursos
+components_dir = os.path.join(BASE_DIR, 'components')
 
+# Crear carpeta db si no existe
 os.makedirs(db_dir, exist_ok=True)
+
+# 3. INICIALIZAR BASES DE DATOS
+# Importamos después de configurar rutas por si los módulos usan rutas relativas
+import db.postgres_db
+import db.sqlite_db
 
 # =====================================================
 # LOGGING
@@ -35,51 +33,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 1. LISTA DE ACCESO PÚBLICO (Sin login)
+# =====================================================
+# CONFIGURACIÓN DE SEGURIDAD (MIDDLEWARE)
+# =====================================================
+
 unrestricted_page_routes = {
-    '/login', 
-    '/signup', 
-    '/reset', 
-    '/MainPage', 
-    '/method', 
+    '/login',
+    '/signup',
+    '/reset',
+    '/MainPage',
+    '/method',
     '/planScreen'
 }
 
-# 2. EL MIDDLEWARE (Copia esto tal cual)
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        
-        # A. REGLA DE ORO: No bloquear nunca a NiceGUI ni a los estáticos
-        # Si bloqueas esto, sale "Connection Lost"
-        if (request.url.path.startswith('/_nicegui') or 
-            request.url.path.startswith('/static') or 
-            request.url.path.startswith('/uploads')):
+        # A. No bloquear NiceGUI ni estáticos
+        if (request.url.path.startswith('/_nicegui') or
+                request.url.path.startswith('/static') or
+                request.url.path.startswith('/components') or # Por seguridad si teacher.py monta components
+                request.url.path.startswith('/uploads')):
             return await call_next(request)
 
-        # B. Verificar si está logueado
+        # B. Verificar estado de autenticación
         authenticated = app.storage.user.get('authenticated', False)
         path = request.url.path
 
-        # C. SI ESTÁ LOGUEADO (Usuario registrado)
+        # C. USUARIO LOGUEADO
         if authenticated:
-            # Si intenta ir al Login o a la Landing Page, lo mandamos a su Dashboard
             if path in {'/login', '/signup', '/MainPage', '/'}:
                 return RedirectResponse('/mainscreen')
-            # Si va a cualquier otra cosa, lo dejamos pasar
             return await call_next(request)
 
-        # D. SI NO ESTÁ LOGUEADO (Visitante)
+        # D. VISITANTE (NO LOGUEADO)
         else:
-            # Si entra a la raíz, mandarlo a la Landing Page
             if path == '/':
                 return RedirectResponse('/MainPage')
             
-            # Si quiere entrar a una página pública permitida, déjalo pasar
             if path in unrestricted_page_routes:
                 return await call_next(request)
             
-            # Si quiere entrar a algo privado (ej: /myclasses), mándalo al Login
-            # (Guardamos a donde quería ir para redirigirlo luego)
+            # Redirigir al login guardando la intención
             return RedirectResponse(f'/login?redirect_to={path}')
 
 # =====================================================
@@ -88,16 +82,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 def main():
     """Inicializa la aplicación NiceGUI."""
-    # Activar el middleware
-    app.add_middleware(AuthMiddleware)
     
-    # --- CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (CRÍTICO) ---
-    # Esto le dice a NiceGUI: "Todo lo que esté en 'components_dir', 
-    # sírvelo en la web cuando pidan '/static'"
-    app.add_static_files('/static', components_dir)
-    logger.info(f"📂 Carpeta estática servida: {components_dir}")
-    # -----------------------------------------------------
+    # 1. Activar Middleware
+    app.add_middleware(AuthMiddleware)
 
+    # 2. Servir Archivos Estáticos (Con validación)
+    if os.path.exists(components_dir):
+        app.add_static_files('/static', components_dir)
+        logger.info(f"📂 Carpeta estática servida en /static: {components_dir}")
+    else:
+        logger.warning(f"⚠️ NO se encontró la carpeta: {components_dir}. Las imágenes no cargarán.")
+
+    # 3. Iniciar UI
     logger.info("Inicializando aplicación UI")
     init_ui()
     logger.info("Aplicación iniciada correctamente")
@@ -105,23 +101,25 @@ def main():
 
 if __name__ in {'__main__', '__mp_main__'}:
     main()
-    
+
     # -------------------------------------------------
-    # CONFIGURACIÓN CRÍTICA PARA RENDER
+    # CONFIGURACIÓN PARA RENDER
     # -------------------------------------------------
     
-    # 1. PUERTO Y HOST
+    # Puerto dinámico de Render (default 8080)
     port = int(os.environ.get("PORT", 8080))
     
-    # 2. RUTA ABSOLUTA DEL FAVICON 
-    favicon_path = os.path.join(BASE_DIR, 'components', 'icon', 'logo.png')
-    
-    # Iniciar servidor
+    # Ruta del favicon con validación
+    favicon_path = os.path.join(components_dir, 'icon', 'logo.png')
+    if not os.path.exists(favicon_path):
+        logger.warning(f"⚠️ Favicon no encontrado en: {favicon_path}")
+        favicon_path = None  # Evita que falle si no está la imagen
+
     ui.run(
-        title="Tuprofemaria: Tu clase, tu ritmo, tu ingles", 
-        reload=True, 
-        storage_secret='maria_2025_horarios_secret_key_!@#987',
-        favicon=favicon_path, 
-        host='0.0.0.0', 
-        port=port       
+        title="Tuprofemaria: Tu clase, tu ritmo, tu ingles",
+        reload=False,  # En producción (Render) reload debe ser False para mejor rendimiento
+        storage_secret=os.environ.get('STORAGE_SECRET', 'clave_secreta_default_segura'),
+        favicon=favicon_path,
+        host='0.0.0.0',
+        port=port
     )

@@ -7,9 +7,37 @@ from db.models import User, Material, StudentMaterial
 from components.headerAdmin import create_admin_screen
 
 logger = logging.getLogger(__name__)
-UPLOAD_DIR = 'uploads'
+
+# =====================================================
+# CORRECCIÓN DE RUTAS (CRÍTICO)
+# =====================================================
+# 1. Calculamos la ruta absoluta basada en ESTE archivo
+# Esto asegura que 'uploads' se cree siempre en el lugar correcto dentro de tu proyecto
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Ajusta el nivel de .dirname() según la profundidad de este archivo.
+# Si este archivo está en: tpmH/frontend/screen/MainAdminScreen/este_archivo.py
+# __file__ = este_archivo.py
+# 1 parent = MainAdminScreen
+# 2 parent = screen
+# 3 parent = frontend
+# 4 parent = tpmH (Raíz del código)
+
+# Si prefieres una solución más simple que no dependa de contar carpetas,
+# usa una ruta relativa al directorio de trabajo actual pero conviértela a absoluta:
+UPLOAD_DIR = os.path.abspath(os.path.join(os.getcwd(), 'uploads'))
+
+# 2. Crear el directorio si no existe
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.add_static_files('/uploads', UPLOAD_DIR)
+
+# 3. Servir archivos estáticos con ruta ABSOLUTA
+# Verificamos primero para evitar errores de NiceGUI
+if os.path.exists(UPLOAD_DIR):
+    app.add_static_files('/uploads', UPLOAD_DIR)
+    logger.info(f"📂 Carpeta de subidas montada en: {UPLOAD_DIR}")
+else:
+    logger.error(f"❌ Error crítico: No se pudo crear/encontrar {UPLOAD_DIR}")
+
+# =====================================================
 
 @ui.page('/MaterialsAdmin')
 def materials_page():
@@ -29,6 +57,7 @@ def materials_page():
 
     # --- HELPER: Detectar si es imagen ---
     def get_file_meta(filename):
+        if not filename: return False, 'description', 'grey'
         ext = os.path.splitext(filename)[1].lower()
         is_img = ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']
         icon = 'description'
@@ -59,7 +88,7 @@ def materials_page():
         finally:
             session.close()
 
-    # --- LÓGICA DE ELIMINACIÓN (NUEVO) ---
+    # --- LÓGICA DE ELIMINACIÓN ---
     async def delete_material(row_data):
         session = PostgresSession()
         try:
@@ -67,10 +96,11 @@ def materials_page():
             session.query(Material).filter(Material.id == row_data['id']).delete()
             session.commit()
 
-            # 2. Eliminar archivo físico (Opcional pero recomendado)
-            file_path = os.path.join(UPLOAD_DIR, row_data['file'])
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            # 2. Eliminar archivo físico (Usando la ruta absoluta corregida)
+            if row_data['file']:
+                file_path = os.path.join(UPLOAD_DIR, row_data['file'])
+                if os.path.exists(file_path):
+                    os.remove(file_path)
 
             ui.notify('Material eliminado correctamente', type='positive')
             
@@ -96,18 +126,25 @@ def materials_page():
                 filename = getattr(e, 'name', 'file')
                 data = e.content.read()
             
+            # Limpiar nombre de archivo (seguridad básica)
+            filename = os.path.basename(filename)
+            
+            # Usar ruta absoluta
             file_path = os.path.join(UPLOAD_DIR, filename)
+            
             with open(file_path, 'wb') as f:
                 f.write(data)
             return filename
         except Exception as ex:
-            ui.notify(f'Error: {ex}', type='negative')
+            ui.notify(f'Error subiendo archivo: {ex}', type='negative')
+            logger.error(f"Upload error: {ex}")
             return None
 
     async def handle_upload_event(e):
         if not title_input.value:
             ui.notify('Escribe un título primero', type='warning')
             return
+        
         filename = await process_upload_to_disk(e)
         if not filename: return 
 
@@ -127,11 +164,14 @@ def materials_page():
             table.update()
         except Exception as err:
             ui.notify(f'Error DB: {err}', type='negative')
+            session.rollback()
         finally:
             session.close()
 
     def trigger_upload():
-        if not title_input.value: return
+        if not title_input.value: 
+            ui.notify('Falta el título', type='warning')
+            return
         uploader.run_method('upload')
 
     def open_assign_dialog(row_data):
@@ -151,14 +191,17 @@ def materials_page():
                 count = 0
                 for u in select.value:
                     stu = session.query(User).filter(User.username == u).first()
-                    session.add(StudentMaterial(
-                        username=stu.username, name=stu.name, surname=stu.surname,
-                        material_id=row_data['id'], progress="Not Started"
-                    ))
-                    count += 1
+                    # Evitar duplicados si ya está asignado (opcional, pero buena práctica)
+                    exists = session.query(StudentMaterial).filter_by(username=stu.username, material_id=row_data['id']).first()
+                    if not exists:
+                        session.add(StudentMaterial(
+                            username=stu.username, name=stu.name, surname=stu.surname,
+                            material_id=row_data['id'], progress="Not Started"
+                        ))
+                        count += 1
                 session.commit()
                 session.close()
-                ui.notify(f'Asignado a {count}', type='positive')
+                ui.notify(f'Asignado a {count} estudiantes nuevos', type='positive')
                 dialog.close()
             
             ui.button('Confirmar', on_click=save).props('unelevated color=pink-600').classes('w-full mt-4')
@@ -235,4 +278,4 @@ def materials_page():
         
         # Conexión de eventos
         table.on('assign', lambda e: open_assign_dialog(e.args))
-        table.on('delete', lambda e: delete_material(e.args)) # Nuevo evento
+        table.on('delete', lambda e: delete_material(e.args))

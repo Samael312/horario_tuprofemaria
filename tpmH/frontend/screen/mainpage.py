@@ -10,19 +10,6 @@ from db.postgres_db import PostgresSession
 
 
 # =====================================================
-# CONFIGURACIÓN
-# =====================================================
-current_dir = Path(__file__).parent.resolve()
-project_root = current_dir.parent.parent
-static_dir = project_root / 'components'
-
-if not static_dir.exists():
-    pass 
-else:
-    app.add_static_files('/static', str(static_dir))
-
-
-# =====================================================
 # TRADUCCIONES
 # =====================================================
 TRANSLATIONS = {

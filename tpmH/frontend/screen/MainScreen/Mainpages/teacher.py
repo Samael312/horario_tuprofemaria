@@ -7,17 +7,49 @@ from components.header import create_main_screen
 from components.headerAdmin import create_admin_screen
 from db.postgres_db import PostgresSession
 from db.sqlite_db import BackupSession
-from db.models import TeacherProfile, User # Asegúrate de que User tenga los campos time_zone y classes_count
+from db.models import TeacherProfile, User 
 
 # Configurar logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS ---
-# Aseguramos que existan las carpetas y las servimos
-os.makedirs('uploads', exist_ok=True)
-app.add_static_files('/components', 'components')
-app.add_static_files('/uploads', 'uploads')
+# =====================================================
+# CONFIGURACIÓN ROBUSTA DE RUTAS (CRÍTICO)
+# =====================================================
+
+# 1. Calcular la raíz del proyecto (donde está la carpeta tpmH)
+# Basado en la ubicación de este archivo: tpmH/frontend/screen/MainScreen/Mainpages/teacher.py
+# Subimos 4 niveles para llegar a tpmH
+current_dir = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(current_dir, '..', '..', '..', '..'))
+
+# 2. Definir rutas absolutas a las carpetas
+COMPONENTS_DIR = os.path.join(PROJECT_ROOT, 'components')
+UPLOADS_DIR = os.path.join(PROJECT_ROOT, 'uploads')
+
+# 3. Crear uploads si no existe
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+# 4. Montar archivos estáticos de forma segura (con try-except para evitar conflictos)
+def safe_mount(url_path, local_path, name):
+    if not os.path.exists(local_path):
+        logger.error(f"❌ No se encuentra la carpeta {name}: {local_path}")
+        return
+
+    try:
+        # Verificamos si ya está montada para no romper la app
+        app.add_static_files(url_path, local_path)
+        logger.info(f"✅ {name} montado en {url_path}")
+    except RuntimeError:
+        logger.info(f"ℹ️ {url_path} ya estaba montado (OK).")
+    except Exception as e:
+        logger.error(f"⚠️ Error montando {name}: {e}")
+
+# Montamos las carpetas necesarias
+safe_mount('/components', COMPONENTS_DIR, 'Components')
+safe_mount('/uploads', UPLOADS_DIR, 'Uploads')
+
+# =====================================================
 
 @ui.page('/teacher')
 def teacher_profile_view():
@@ -31,10 +63,11 @@ def teacher_profile_view():
     current_user_info = {'name': '', 'surname': ''}
 
     # --- DEFINICIÓN DE ICONOS ---
-    icon_instagram = 'img:components/icon/instagram.png'
-    icon_tiktok = 'img:components/icon/tik-tok.png' 
-    icon_linkedin = 'img:components/icon/linkedin.png'
-    icon_whatsapp = 'img:components/icon/wapp.png'
+    # Nota: Usamos la ruta web /components que acabamos de asegurar arriba
+    icon_instagram = 'img:/components/icon/instagram.png'
+    icon_tiktok = 'img:/components/icon/tik-tok.png' 
+    icon_linkedin = 'img:/components/icon/linkedin.png'
+    icon_whatsapp = 'img:/components/icon/wapp.png'
 
     if username:
         session = PostgresSession()
@@ -69,8 +102,6 @@ def teacher_profile_view():
             reviews_list = db_profile.reviews if hasattr(db_profile, 'reviews') and db_profile.reviews else []
             gallery_data = db_profile.gallery or []
             
-            logger.info(f"Galería cargada con {len(gallery_data)} elementos")
-
             profile_data = {
                 'photo': db_profile.photo or 'https://www.gravatar.com/avatar/?d=mp',
                 'name': f"{db_profile.name} {db_profile.surname}".strip(),
@@ -128,6 +159,7 @@ def teacher_profile_view():
         finally:
             pg_session.close()
 
+        # Backup en SQLite (Opcional en Render)
         try:
             bk_session = BackupSession()
             bk_prof = bk_session.query(TeacherProfile).first()
@@ -138,29 +170,27 @@ def teacher_profile_view():
             bk_session.commit()
             bk_session.close()
         except Exception as e:
-            logger.error(f"Error SQLite reviews: {e}")
+            # Silenciamos error de SQLite en producción para no alarmar
+            logger.warning(f"SQLite backup skipped: {e}")
 
     async def submit_review():
         if not form_state['comment'].strip():
             ui.notify('Escribe un comentario por favor.', type='warning')
             return
         
-        # --- CORRECCIÓN AQUÍ: OBTENER time_zone Y total_classes DEL OBJETO USER ---
-        user_time_zone = 'UTC' # Valor por defecto
-        user_total_classes = 0 # Valor por defecto
+        user_time_zone = 'UTC' 
+        user_total_classes = 0 
         
         session = PostgresSession()
         try:
             u_obj = session.query(User).filter(User.username == username).first()
             if u_obj:
-                # Usar getattr() para evitar errores si los campos no existen
                 user_time_zone = getattr(u_obj, 'time_zone', 'UTC')
                 user_total_classes = getattr(u_obj, 'total_classes', 0) 
         except Exception as e:
             logger.error(f"Error obteniendo datos extra usuario: {e}")
         finally:
             session.close()
-        # ------------------------------------------------------------------------
 
         review_entry = {
             'id': str(uuid.uuid4()),
@@ -170,7 +200,7 @@ def teacher_profile_view():
             'rating': form_state['rating'],
             'comment': form_state['comment'],
             'date': datetime.now().strftime("%Y-%m-%d"),
-            'time_zone': user_time_zone, # Ahora usa el valor correcto
+            'time_zone': user_time_zone,
             'total_classes': user_total_classes
         }
         
@@ -209,7 +239,6 @@ def teacher_profile_view():
         with ui.dialog() as d, ui.card().classes('w-full h-full p-0 bg-transparent shadow-none items-center justify-center relative'):
             
             if is_video:
-                # Renderizar Video Player
                 ui.html(f'''
                     <video controls autoplay style="max-width:90%; max-height:90%; border-radius:20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
                         <source src="{src}" type="video/mp4">
@@ -217,12 +246,10 @@ def teacher_profile_view():
                     </video>
                 ''', sanitize=False)
             else:
-                # Renderizar Imagen
                 ui.html(f'''
                     <img src="{src}" style="max-width:90%; max-height:90%; object-fit:contain; border-radius:20px; display:block ;box-shadow: 0 4px 6px rgba(0,0,0,0.3);" />
                 ''', sanitize=False)
             
-            # Botón cerrar flotante
             with ui.element('div').classes('absolute justify-center bottom-6 w-full flex'):
                 ui.button(icon='close', on_click=d.close).props('round color=white text-color=black')
         d.open()
@@ -230,7 +257,7 @@ def teacher_profile_view():
     # --- UI PRINCIPAL ---
     with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-8 pb-20'):
         
-        # 1. HERO SECTION (Se mantiene igual)
+        # 1. HERO SECTION
         with ui.card().classes('w-full p-8 rounded-3xl bg-white shadow-sm border border-slate-100 flex flex-col md:flex-row gap-8 items-center md:items-start'):
             # Foto
             if profile_data.get('photo') and profile_data['photo'].startswith('data:'):
@@ -261,15 +288,13 @@ def teacher_profile_view():
                             ui.button(icon=icon_tiktok, on_click=lambda: open_social_link(sl['tiktok'])) \
                                 .props('flat round dense size=md').tooltip('TikTok')
                         
-                        # Botón WhatsApp / Teléfono
                         if sl.get('phone'):
-                            # Limpiar numero para el link
                             phone_num = ''.join(filter(str.isdigit, sl['phone']))
                             wa_url = f"https://wa.me/{phone_num}"
                             ui.button(icon=icon_whatsapp, on_click=lambda: open_social_link(wa_url)) \
                                 .props('flat round dense size=md color=green').tooltip('WhatsApp')
 
-        # 2. CONTENIDO PRINCIPAL (Se mantiene igual)
+        # 2. CONTENIDO PRINCIPAL
         with ui.grid().classes('w-full grid-cols-1 lg:grid-cols-3 gap-8'):
             
             # COLUMNA IZQ (Ancha)
@@ -281,7 +306,7 @@ def teacher_profile_view():
                         ui.label('Sobre Mí').classes('text-2xl font-bold text-slate-800')
                     ui.label(profile_data.get('bio', '')).classes('text-slate-600 leading-relaxed text-lg whitespace-pre-wrap font-light')
 
-                # Video Youtube (Intro)
+                # Video Youtube
                 vid_url = profile_data.get('video', '')
                 video_id = get_youtube_id(vid_url)
                 if video_id:
@@ -329,7 +354,7 @@ def teacher_profile_view():
                             for skill in profile_data['skills']:
                                 ui.chip(skill, icon='check').props('color=rose-50 text-color=rose-700 dense').classes('font-bold border border-rose-100')
 
-                # --- GALERÍA (FOTOS Y VIDEOS) ---
+                # --- GALERÍA ---
                 gallery_items = profile_data.get('gallery', [])
                 if gallery_items:
                     with ui.card().classes('w-full p-6 rounded-3xl shadow-sm border border-slate-100 bg-white'):
@@ -337,19 +362,12 @@ def teacher_profile_view():
                             ui.icon('photo_library', color='rose', size='sm')
                             ui.label('Galería').classes('text-lg font-bold text-slate-800')
                         
-                        # Grid de 2 columnas
                         with ui.grid().classes('grid-cols-2 gap-3'):
                             for i, item_src in enumerate(gallery_items):
-                                
                                 is_video = item_src.lower().endswith('.mp4')
                                 
-                                # Tarjeta contenedora
                                 with ui.card().classes('w-full h-32 p-0 rounded-xl overflow-hidden cursor-pointer group shadow-sm transition-all hover:shadow-md border border-slate-100 relative bg-black'):
-                                    
                                     if is_video:
-                                        # TRUCO: Usamos video HTML5 como miniatura.
-                                        # #t=0.5 intenta forzar al navegador a mostrar el frame del segundo 0.5 (evita pantalla negra inicial)
-                                        # preload="metadata" carga lo justo para mostrar la imagen
                                         ui.html(f'''
                                             <video src="{item_src}#t=0.5" 
                                                     style="width:100%; height:100%; object-fit:cover;" 
@@ -358,22 +376,14 @@ def teacher_profile_view():
                                                     playsinline>
                                             </video>
                                         ''', sanitize=False).classes('w-full h-full absolute inset-0')
-                                        
-                                        # Overlay con icono de Play (Encima del video)
                                         with ui.column().classes('absolute inset-0 items-center justify-center bg-black/10 group-hover:bg-black/30 transition-colors z-10'):
-                                             ui.icon('play_circle_outline', size='3em', color='white').classes('opacity-90 drop-shadow-md')
-                                             
+                                              ui.icon('play_circle_outline', size='3em', color='white').classes('opacity-90 drop-shadow-md')
                                     else:
-                                        # Imagen normal
                                         ui.html(f'<img src="{item_src}" style="width:100%; height:100%; object-fit:cover;" />', sanitize=False).classes('w-full h-full')
-                                        
-                                    # Click Handler para abrir Lightbox (Capa invisible superior)
-                                    ui.element('div').classes('absolute inset-0 z-20').on('click', lambda src=item_src: open_lightbox(src))
-                                    
-                                    # Overlay hover (Solo para imagenes, video ya tiene su UI)
-                                    if not is_video:
-                                        with ui.element('div').classes('absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-10'):
-                                            ui.icon('zoom_in', color='white').classes('opacity-0 group-hover:opacity-100 transition-opacity')
+                                        ui.element('div').classes('absolute inset-0 z-20').on('click', lambda src=item_src: open_lightbox(src))
+                                        if not is_video:
+                                            with ui.element('div').classes('absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-10'):
+                                                ui.icon('zoom_in', color='white').classes('opacity-0 group-hover:opacity-100 transition-opacity')
 
         # 3. SECCIÓN DE REVIEWS
         ui.separator().classes('my-8 bg-slate-200')
@@ -408,39 +418,29 @@ def teacher_profile_view():
 
                                 with ui.row().classes('justify-between items-start w-full mb-2'):
                                     with ui.row().classes('items-center gap-3'):
-                                        # Avatar simple
                                         ui.icon('account_circle', color='slate-300', size='3em')
-                                        
                                         with ui.column().classes('gap-0.5'):
-                                            # Nombre
                                             full_name = f"{rev.get('name', '')} {rev.get('surname', '')}".strip()
                                             display_name = full_name if full_name else rev.get('username', 'Anónimo')
                                             ui.label(display_name).classes('font-bold text-slate-700 text-sm')
                                             
-                                            # --- ESTILOS MEJORADOS PARA BADGES DE INFO ---
+                                            # BADGES
                                             with ui.row().classes('items-center gap-1'):
                                                 classes_count = rev.get('total_classes', 0)
-                                                
                                                 ui.label(f'Clases: {classes_count}').classes('text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full font-bold shadow-xs')
-
-                                                # BADGE TIMEZONE (Destacado)
                                                 time_zone_val = rev.get('time_zone', 'UTC')
                                                 ui.label(f'Zona: {time_zone_val}').classes('text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold shadow-xs')
-                                                
-                                                # Fecha
                                                 ui.label(f"Fecha: {rev.get('date', '')}").classes('text-[10px] text-slate-400')
-                                            # ------------------------------------------------
 
-                                    # Estrellas (Derecha arriba)
+                                    # Estrellas
                                     with ui.row().classes('gap-0'):
                                         for i in range(5):
                                             icon_name = 'star' if i < int(rev.get('rating', 0)) else 'star_border'
                                             ui.icon(icon_name, color='amber-400', size='xs')
                                 
-                                # Comentario
                                 ui.label(rev.get('comment', '')).classes('text-slate-600 text-sm italic mt-2')
 
-                # Formulario (Se mantiene igual)
+                # Formulario
                 if is_client and username:
                     with ui.card().classes('w-full mt-6 p-6 rounded-2xl border border-rose-100 bg-rose-50/30'):
                         ui.label('Deja tu reseña').classes('text-lg font-bold text-rose-800 mb-4')
