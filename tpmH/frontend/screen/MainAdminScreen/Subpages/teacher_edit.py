@@ -12,23 +12,25 @@ from db.models import Base, TeacherProfile, User
 logger = logging.getLogger(__name__)
 
 # =====================================================
-# CORRECCIÓN DE RUTAS Y EVITAR CONFLICTOS
+# CORRECCIÓN DE RUTA DE ESCRITURA (CRÍTICO)
 # =====================================================
+# Detectamos dónde estamos ejecutando para encontrar la carpeta 'tpmH'
+# y guardar los archivos EXACTAMENTE donde main.py los va a buscar.
 
-# 1. Definir ruta absoluta (Seguro para Render)
-# Usamos os.getcwd() para asegurar que se crea en la raíz donde corre main.py
-UPLOAD_DIR = os.path.abspath(os.path.join(os.getcwd(), 'uploads'))
+current_working_dir = os.getcwd()
+
+if os.path.exists(os.path.join(current_working_dir, 'tpmH')):
+    # Estamos en Render (o ejecutando desde raíz), entramos a tpmH
+    UPLOAD_DIR = os.path.abspath(os.path.join(current_working_dir, 'tpmH', 'uploads'))
+else:
+    # Estamos dentro de la carpeta o entorno local simple
+    UPLOAD_DIR = os.path.abspath(os.path.join(current_working_dir, 'uploads'))
+
+# Crear la carpeta física si no existe
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+logger.info(f"📂 [TeacherEdit] Guardando archivos en: {UPLOAD_DIR}")
 
-# 2. Montar archivos estáticos DE FORMA SEGURA
-# Usamos try-except por si 'MaterialsAdmin' o 'main.py' ya montaron '/uploads'
-try:
-    app.add_static_files('/uploads', UPLOAD_DIR)
-    logger.info(f"📂 (TeacherEdit) Carpeta uploads montada: {UPLOAD_DIR}")
-except RuntimeError:
-    # Si ya estaba montada, perfecto, no hacemos nada y evitamos el crash
-    logger.info("ℹ️ La ruta /uploads ya estaba gestionada por otro módulo.")
-
+# NOTA: NO usamos app.add_static_files aquí. main.py ya lo hace.
 # =====================================================
 
 # Habilidades predefinidas
@@ -212,7 +214,7 @@ def teacherAdmin():
             if not data:
                 raise Exception("No se pudieron leer los datos del archivo.")
 
-            # 2. Guardar en disco (Ruta absoluta segura)
+            # 2. Guardar en disco (Ruta absoluta segura UPLOAD_DIR)
             # Limpiamos el nombre de espacios
             filename = filename.replace(" ", "_")
             filepath = os.path.join(UPLOAD_DIR, filename)

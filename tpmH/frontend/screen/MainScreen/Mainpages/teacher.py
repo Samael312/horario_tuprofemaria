@@ -2,7 +2,6 @@ from nicegui import ui, app
 from datetime import datetime
 import logging
 import uuid
-import os
 from components.header import create_main_screen
 from components.headerAdmin import create_admin_screen
 from db.postgres_db import PostgresSession
@@ -13,43 +12,8 @@ from db.models import TeacherProfile, User
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# =====================================================
-# CONFIGURACIÓN ROBUSTA DE RUTAS (CRÍTICO)
-# =====================================================
-
-# 1. Calcular la raíz del proyecto (donde está la carpeta tpmH)
-# Basado en la ubicación de este archivo: tpmH/frontend/screen/MainScreen/Mainpages/teacher.py
-# Subimos 4 niveles para llegar a tpmH
-current_dir = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(current_dir, '..', '..', '..', '..'))
-
-# 2. Definir rutas absolutas a las carpetas
-COMPONENTS_DIR = os.path.join(PROJECT_ROOT, 'components')
-UPLOADS_DIR = os.path.join(PROJECT_ROOT, 'uploads')
-
-# 3. Crear uploads si no existe
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-
-# 4. Montar archivos estáticos de forma segura (con try-except para evitar conflictos)
-def safe_mount(url_path, local_path, name):
-    if not os.path.exists(local_path):
-        logger.error(f"❌ No se encuentra la carpeta {name}: {local_path}")
-        return
-
-    try:
-        # Verificamos si ya está montada para no romper la app
-        app.add_static_files(url_path, local_path)
-        logger.info(f"✅ {name} montado en {url_path}")
-    except RuntimeError:
-        logger.info(f"ℹ️ {url_path} ya estaba montado (OK).")
-    except Exception as e:
-        logger.error(f"⚠️ Error montando {name}: {e}")
-
-# Montamos las carpetas necesarias
-safe_mount('/components', COMPONENTS_DIR, 'Components')
-safe_mount('/uploads', UPLOADS_DIR, 'Uploads')
-
-# =====================================================
+# NOTA: Ya no necesitamos montar carpetas aquí. 
+# 'main.py' ya ha montado '/components' y '/uploads' correctamente.
 
 @ui.page('/teacher')
 def teacher_profile_view():
@@ -63,7 +27,7 @@ def teacher_profile_view():
     current_user_info = {'name': '', 'surname': ''}
 
     # --- DEFINICIÓN DE ICONOS ---
-    # Nota: Usamos la ruta web /components que acabamos de asegurar arriba
+    # Rutas relativas a la URL web (ya montadas en main.py)
     icon_instagram = 'img:/components/icon/instagram.png'
     icon_tiktok = 'img:/components/icon/tik-tok.png' 
     icon_linkedin = 'img:/components/icon/linkedin.png'
@@ -116,7 +80,7 @@ def teacher_profile_view():
                     'linkedin': socials.get('linkedin', ''),
                     'instagram': socials.get('instagram', ''),
                     'tiktok': socials.get('tiktok', ''),
-                    'phone': socials.get('phone', '') # Nuevo campo
+                    'phone': socials.get('phone', '') 
                 }
             }
         else:
@@ -159,7 +123,6 @@ def teacher_profile_view():
         finally:
             pg_session.close()
 
-        # Backup en SQLite (Opcional en Render)
         try:
             bk_session = BackupSession()
             bk_prof = bk_session.query(TeacherProfile).first()
@@ -170,7 +133,6 @@ def teacher_profile_view():
             bk_session.commit()
             bk_session.close()
         except Exception as e:
-            # Silenciamos error de SQLite en producción para no alarmar
             logger.warning(f"SQLite backup skipped: {e}")
 
     async def submit_review():

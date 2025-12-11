@@ -9,34 +9,24 @@ from components.headerAdmin import create_admin_screen
 logger = logging.getLogger(__name__)
 
 # =====================================================
-# CORRECCIÓN DE RUTAS (CRÍTICO)
+# CORRECCIÓN DE RUTAS (SOLUCIÓN DEFINITIVA)
 # =====================================================
-# 1. Calculamos la ruta absoluta basada en ESTE archivo
-# Esto asegura que 'uploads' se cree siempre en el lugar correcto dentro de tu proyecto
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# Ajusta el nivel de .dirname() según la profundidad de este archivo.
-# Si este archivo está en: tpmH/frontend/screen/MainAdminScreen/este_archivo.py
-# __file__ = este_archivo.py
-# 1 parent = MainAdminScreen
-# 2 parent = screen
-# 3 parent = frontend
-# 4 parent = tpmH (Raíz del código)
+# main.py busca en 'tpmH/uploads'. Debemos guardar ahí obligatoriamente.
 
-# Si prefieres una solución más simple que no dependa de contar carpetas,
-# usa una ruta relativa al directorio de trabajo actual pero conviértela a absoluta:
-UPLOAD_DIR = os.path.abspath(os.path.join(os.getcwd(), 'uploads'))
+current_working_dir = os.getcwd()
 
-# 2. Crear el directorio si no existe
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# 3. Servir archivos estáticos con ruta ABSOLUTA
-# Verificamos primero para evitar errores de NiceGUI
-if os.path.exists(UPLOAD_DIR):
-    app.add_static_files('/uploads', UPLOAD_DIR)
-    logger.info(f"📂 Carpeta de subidas montada en: {UPLOAD_DIR}")
+# Detectamos si estamos en la raíz (Render) y existe la carpeta 'tpmH'
+if os.path.exists(os.path.join(current_working_dir, 'tpmH')):
+    UPLOAD_DIR = os.path.abspath(os.path.join(current_working_dir, 'tpmH', 'uploads'))
 else:
-    logger.error(f"❌ Error crítico: No se pudo crear/encontrar {UPLOAD_DIR}")
+    # Caso local o estructura plana
+    UPLOAD_DIR = os.path.abspath(os.path.join(current_working_dir, 'uploads'))
 
+# Crear el directorio si no existe
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+logger.info(f"📂 [MaterialAdmin] Guardando archivos en: {UPLOAD_DIR}")
+
+# NOTA: NO usamos app.add_static_files aquí. main.py ya lo hace.
 # =====================================================
 
 @ui.page('/MaterialsAdmin')
@@ -129,7 +119,7 @@ def materials_page():
             # Limpiar nombre de archivo (seguridad básica)
             filename = os.path.basename(filename)
             
-            # Usar ruta absoluta
+            # Usar ruta absoluta UPLOAD_DIR
             file_path = os.path.join(UPLOAD_DIR, filename)
             
             with open(file_path, 'wb') as f:
@@ -191,7 +181,7 @@ def materials_page():
                 count = 0
                 for u in select.value:
                     stu = session.query(User).filter(User.username == u).first()
-                    # Evitar duplicados si ya está asignado (opcional, pero buena práctica)
+                    # Evitar duplicados
                     exists = session.query(StudentMaterial).filter_by(username=stu.username, material_id=row_data['id']).first()
                     if not exists:
                         session.add(StudentMaterial(
