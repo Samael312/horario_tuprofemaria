@@ -21,7 +21,7 @@ if not static_dir.exists():
 else:
     app.add_static_files('/static', str(static_dir))
 
-unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage', '/method'}
+unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage', '/method','/planScreen'}
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -276,7 +276,7 @@ def render_landing_page():
                 ui.label(t['hero_subtitle']).classes('text-lg md:text-xl text-slate-500 max-w-2xl mx-auto animate-enter delay-200 leading-relaxed')
                 
                 with ui.row().classes('mx-auto gap-4 mt-4 animate-enter delay-300'):
-                    ui.button(t['btn_start'], icon='rocket_launch', on_click=lambda: ui.navigate.to('/method')).props('unelevated color=slate-900 text-color=white size=lg').classes('rounded-xl shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 font-bold px-8 py-3')
+                    ui.button(t['btn_start'], icon='rocket_launch', on_click=lambda: ui.navigate.to('/planScreen')).props('unelevated color=slate-900 text-color=white size=lg').classes('rounded-xl shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 font-bold px-8 py-3')
                     ui.button(t['btn_view_plans'], icon='visibility', on_click=lambda: ui.run_javascript("document.getElementById('plans').scrollIntoView({behavior: 'smooth'})")).props('outline color=slate-900 size=lg').classes('rounded-xl border-2 hover:bg-white/50 transition-colors font-bold px-8 py-3')
 
         # --- VIDEO ---
@@ -355,15 +355,7 @@ def render_landing_page():
                             
             except Exception as e:
                 print(f"Error conectando a la BD o extrayendo reviews: {e}")
-                # No hacemos nada más aquí, dejaremos que el bloque 'if not reviews_list' ponga los datos de ejemplo si falló.
-
-            # SI NO HAY DATOS EN LA BD (o falló la conexión), USAR DATOS DE EJEMPLO:
-            if not reviews_list:
-                reviews_list = [
-                    {"name": "Ejemplo Estudiante", "text": "Aún no hay reseñas en la base de datos.", "stars": 5, "country": "US"},
-                    {"name": "María G.", "text": "Excelente profesora, muy paciente.", "stars": 5, "country": "ES"},
-                    {"name": "John Doe", "text": "Great lessons!", "stars": 5, "country": "UK"}
-                ]
+                # No hacemos nada más aquí, dejaremos que el bloque 'if not reviews_list' ponga los datos de ejemplo si falló
 
             # 2. LOGICA DE DESPLAZAMIENTO INFINITO
             # Si hay pocas reviews (menos de 6), duplicamos la lista varias veces para llenar la pantalla
@@ -377,6 +369,7 @@ def render_landing_page():
             with ui.column().classes('max-w-7xl mx-auto px-6 mb-12 text-center z-10 relative'):
                 ui.label(t.get('reviews_tag', 'Reviews')).classes('text-rose-600 font-bold tracking-widest uppercase text-sm')
                 ui.label(t.get('reviews_title', 'Historias de Éxito')).classes('text-4xl font-bold text-slate-900')
+
                 ui.label(t.get('reviews_subtitle', 'Personas reales, resultados reales.')).classes('text-slate-500 text-lg')
 
             # Contenedor con máscara de desvanecimiento
@@ -399,6 +392,9 @@ def render_landing_page():
 
                         # 2. Comentario: Cambiamos 'text' por 'comment'
                         r_text = review.get('comment', 'Sin comentarios.')
+
+                        r_time = review.get('time_zone', 'Mundo')
+                        r_total = review.get('total_classes', "0")
                         
                         # 3. Estrellas: Cambiamos 'stars' por 'rating'
                         try:
@@ -420,14 +416,27 @@ def render_landing_page():
                                 else:
                                     initial = r_name[:2].upper()
                                 
+                                
                                 with ui.element('div').classes('w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 font-bold text-sm shadow-sm'):
                                     ui.label(initial)
                                 
                                 with ui.column().classes('gap-0'):
-                                    ui.label(r_name).classes('font-bold text-slate-800 text-sm')
+                                    # NUEVA FILA para el nombre y los labels de tiempo/total
+                                    with ui.row().classes('gap-2 items-center'):
+                                        ui.label(r_name).classes('font-bold text-slate-800 text-sm')
+                                        
+                                        # MOVEMOS r_time aquí, al lado del nombre
+                                        if r_time:
+                                            ui.label(r_time).classes('text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold shadow-xs')
+                                            
+                                        # MOVEMOS r_total aquí, al lado de r_time
+                                        if r_total:
+                                            ui.label(f'Clases: {r_total}').classes('text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold shadow-xs')
+                                            
                                     # Mostramos la fecha en lugar del país, ya que el país no viene en el JSON
                                     if r_date:
                                         ui.label(r_date).classes('text-xs text-slate-400')
+                                        
                                 
                                 # Estrellas
                                 with ui.row().classes('ml-auto gap-0'):

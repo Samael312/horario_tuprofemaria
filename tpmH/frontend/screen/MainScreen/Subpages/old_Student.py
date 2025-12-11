@@ -82,7 +82,8 @@ def show_existing_classes(container):
                 
                 # 1. Selección de Paquete
                 with ui.row().classes('w-full items-center'):
-                    package_selector = ui.select(pack_of_classes, label='Paquete Activo')\
+                    default_plan = app.storage.user.get('selected_plan', None)
+                    package_selector = ui.select(pack_of_classes, label='Paquete Activo', value=default_plan)\
                         .props('outlined dense options-dense behavior="menu"').classes('w-full md:w-1/3')
                     package_selector.add_slot('prepend', '<q-icon name="inventory_2" />')
 

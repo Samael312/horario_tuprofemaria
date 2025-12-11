@@ -77,7 +77,10 @@ def my_classesAdmin():
 
                 # Prioridad a la fecha de HOY
                 if p_date == now_date_str:
-                    today_classes.append(c)
+                    if c.status in FINALIZED_STATUSES:
+                        history_classes.append(c)
+                    else:
+                        today_classes.append(c)
                 elif c.status in FINALIZED_STATUSES:
                     history_classes.append(c)
                 elif c_full_int > current_full_int:

@@ -485,7 +485,6 @@ def my_classes():
 
         d.open()
 
-    # --- LÓGICA DE RENOVACIÓN DE SUSCRIPCIÓN ---
     # --- LÓGICA DE RENOVACIÓN DE SUSCRIPCIÓN (ACTUALIZADA) ---
     async def renew_subscription(new_plan_name):
         session = PostgresSession()
@@ -503,6 +502,15 @@ def my_classes():
                 u.class_count = new_count_str
                 u.total_classes = 0 
                 
+                # --- ACTUALIZAR payment_info (solo Clases_paquete) ---
+                if u.payment_info:
+                    try:
+                        pi = u.payment_info.copy()
+                        pi["Clases_paquete"] = f"0/{new_limit}"
+                        u.payment_info = pi
+                    except Exception as json_err:
+                        logger.error(f"Error actualizando payment_info: {json_err}")
+
                 # --- NUEVA LÓGICA: INCREMENTAR RENOVACIONES ---
                 current_renovations = u.renovations if u.renovations is not None else 0
                 u.renovations = current_renovations + 1
@@ -525,6 +533,15 @@ def my_classes():
                         bk_u.package = new_plan_name
                         bk_u.class_count = new_count_str
                         bk_u.total_classes = 0
+
+                        # --- ACTUALIZAR payment_info EN BACKUP ---
+                    if bk_u.payment_info:
+                        try:
+                            bk_pi = bk_u.payment_info.copy()
+                            bk_pi["Clases_paquete"] = f"0/{new_limit}"
+                            bk_u.payment_info = bk_pi
+                        except Exception as json_err_bk:
+                            logger.error(f"Error actualizando payment_info en backup: {json_err_bk}")
                         
                         # --- ACTUALIZAR BACKUP (Renovations) ---
                         bk_renovations = bk_u.renovations if bk_u.renovations is not None else 0

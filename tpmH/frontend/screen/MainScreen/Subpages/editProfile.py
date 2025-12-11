@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @ui.page('/profile_edit')
 def profile_edit():
     # Verificar sesión de NiceGUI
+    ui.add_head_html('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />')
     username = app.storage.user.get("username")
     if not username:
         ui.label("No hay usuario en sesión").classes('text-negative mt-4 text-xl font-bold p-4')
@@ -60,6 +61,7 @@ def profile_edit():
                 # Cuerpo Tarjeta
                 with ui.grid(columns=2).classes('w-full p-6 gap-6'):
                     personal_inputs = {}
+                    
 
                     # Configuración de campos (CORREGIDA)
                     # Usamos getattr(obj, attr, default) directamente sobre user_obj
@@ -67,7 +69,7 @@ def profile_edit():
                         ('name', 'Nombre', getattr(user_obj, 'name', ''), 'badge'),
                         ('surname', 'Apellido', getattr(user_obj, 'surname', ''), 'badge'),
                         ('email', 'Correo', getattr(user_obj, 'email', ''), 'email'), # Corrección aquí
-                        ('time_zone', 'Zona Horaria', getattr(user_obj, 'time_zone', 'UTC'), 'schedule') # Corrección aquí
+                        ('time_zone', 'Zona Horaria', getattr(user_obj, 'time_zone', 'UTC'), 'public'), # Corrección aquí
                     ]
 
                     for field_key, label, value, icon in fields_config:
@@ -75,10 +77,16 @@ def profile_edit():
                             ui.label(label).classes('text-sm font-semibold text-gray-600 ml-1')
                             
                             if field_key == 'time_zone':
-                                personal_inputs[field_key] = ui.select(
+                                # 1. Creamos el select
+                                sel = ui.select(
                                     options=sorted(available_timezones()),
                                     value=value
                                 ).props('outlined dense options-dense use-input input-debounce="0" behavior="menu"').classes('w-full')
+                                
+                                # 2. AÑADIMOS EL ICONO (Esta era la parte que faltaba)
+                                sel.add_slot('prepend', f'<q-icon name="{icon}" />')
+                                
+                                personal_inputs[field_key] = sel
                             else:
                                 inp = ui.input(value=value).props('outlined dense').classes('w-full')
                                 inp.add_slot('prepend', f'<q-icon name="{icon}" />')
@@ -89,15 +97,32 @@ def profile_edit():
                     raw_goal = getattr(user_obj, 'goal', None)
                     goal_value = raw_goal if raw_goal in goals_list else None
 
+                    payment_info = getattr(user_obj, 'payment_info', {}) or {}
+                    methods = payment_info.get('preferred_methods', [])
+
+                    # 5. Selector de Objetivo (Se colocará en la Columna 1 de la siguiente fila disponible)
                     with ui.column().classes('w-full gap-1'):
                         ui.label('Objetivo de Aprendizaje').classes('text-sm font-semibold text-gray-600 ml-1')
                         goal_selector = ui.select(
                             options=sorted(goals_list),
                             value=goal_value
-                        ).props('outlined dense').classes('w-full') 
+                        ).props('outlined dense').classes('w-full')
                         
                         goal_selector.add_slot('prepend', '<q-icon name="assignment" />')
                         personal_inputs['goal'] = goal_selector
+
+                    # 6. Selector de Métodos de Pago (Se colocará en la Columna 2, al lado del Objetivo)
+                    with ui.column().classes('w-full gap-1'):
+                        ui.label('Métodos de pago').classes('text-sm font-semibold text-gray-600 ml-1')
+                        
+                        method_selector = ui.select(
+                            options=sorted(method_list),
+                            multiple=True,
+                            value=methods,
+                        ).props('outlined dense use-chips').classes('w-full') # Agregué 'use-chips' para que se vea mejor múltiple
+
+                        method_selector.add_slot('prepend', '<q-icon name="credit_card" />')
+                        personal_inputs['payment_methods'] = method_selector
 
             # =================================================
             # TARJETA 2: GESTIÓN DE HORARIOS Y PAQUETE
@@ -261,6 +286,7 @@ def profile_edit():
                         u_pg.time_zone = user_update['time_zone']
                         u_pg.email = user_update['email']
                         u_pg.goal = user_update['goal'] # IMPORTANTE: Ahora guardamos el goal
+                        u_pg.payment_info = user_update['payment_info']   # <----- NUEVO
                     
                     # Schedules update (Replace strategy)
                     pg_session.query(SchedulePref).filter(SchedulePref.username == username).delete()
@@ -285,6 +311,7 @@ def profile_edit():
                         u_sq.time_zone = user_update['time_zone']
                         u_sq.email = user_update['email']
                         u_sq.goal = user_update['goal'] # También en el respaldo
+                        u_sq.payment_info = user_update['payment_info']   # <----- NUEVO
                     
                     sqlite_session.query(SchedulePref).filter(SchedulePref.username == username).delete()
                     for item in schedules_list:
@@ -307,7 +334,10 @@ def profile_edit():
                     'surname': personal_inputs['surname'].value,
                     'time_zone': personal_inputs['time_zone'].value,
                     'email': personal_inputs['email'].value,
-                    'goal': personal_inputs['goal'].value # Capturamos el goal del select
+                    'goal': personal_inputs['goal'].value,
+                    'payment_info': {
+                        'preferred_methods': personal_inputs['payment_methods'].value
+                    }
                 }
                 
                 pkg_val = rgh_inputs['package'].value

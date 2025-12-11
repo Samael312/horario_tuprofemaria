@@ -10,7 +10,7 @@ def create_ui(content_function=None):
 
     # HEADER COMPACTO
     with ui.header().classes('h-16 px-6 bg-white border-b border-gray-200 items-center justify-between shadow-sm text-gray-800'):
-        with ui.row().classes('items-center gap-2 cursor-pointer'):
+        with ui.row().classes('items-center gap-2 cursor-pointer').on('click', lambda: ui.navigate.to('/')):
             ui.icon('school', color='pink-600', size='md')
             ui.label('TuProfeMaria').classes('text-xl font-black tracking-tight text-gray-800')
 

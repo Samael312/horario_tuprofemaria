@@ -50,8 +50,9 @@ def new_student():
                 
                 # --- Fila 1: Paquete y Duración (Grid) ---
                 with ui.grid(columns=2).classes('w-full gap-6'):
+                    default_plan = app.storage.user.get('selected_plan', None)
                     # Selector Paquete
-                    package_selector = ui.select(pack_of_classes, label='Paquete Seleccionado')\
+                    package_selector = ui.select(pack_of_classes, label='Paquete Seleccionado', value= default_plan)\
                         .props('outlined dense options-dense behavior="menu"').classes('w-full')
                     package_selector.add_slot('prepend', '<q-icon name="inventory_2" />')
 

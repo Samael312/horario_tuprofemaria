@@ -19,6 +19,7 @@ goals_list = [
     "Ganar confianza al participar en conversaciones",
     "Poder viajar al extranjero usando solo inglés"
 ]
+method_list = ["Paypal", "Binance", "Zelle"]
 
 # Limite total de clases por paquete (Usado en el Registro/Signup)
 PACKAGE_LIMITS = {

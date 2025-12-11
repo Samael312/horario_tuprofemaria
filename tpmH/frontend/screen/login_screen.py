@@ -13,7 +13,7 @@ from db.models import User
 # =====================================================
 # CONFIGURACIÓN
 # =====================================================
-unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage', '/method'}
+unrestricted_page_routes = {'/login', '/signup', '/reset', '/MainPage', '/method','/planScreen'}
 
 # =====================================================
 # MIDDLEWARE DE AUTENTICACIÓN

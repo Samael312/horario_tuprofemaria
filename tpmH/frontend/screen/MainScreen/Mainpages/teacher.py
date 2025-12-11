@@ -7,7 +7,7 @@ from components.header import create_main_screen
 from components.headerAdmin import create_admin_screen
 from db.postgres_db import PostgresSession
 from db.sqlite_db import BackupSession
-from db.models import TeacherProfile, User
+from db.models import TeacherProfile, User # Asegúrate de que User tenga los campos time_zone y classes_count
 
 # Configurar logger
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +34,6 @@ def teacher_profile_view():
     icon_instagram = 'img:components/icon/instagram.png'
     icon_tiktok = 'img:components/icon/tik-tok.png' 
     icon_linkedin = 'img:components/icon/linkedin.png'
-    # Usamos icono standard de material icons para whatsapp o telefono si no tienes imagen
     icon_whatsapp = 'img:components/icon/wapp.png'
 
     if username:
@@ -146,6 +145,23 @@ def teacher_profile_view():
             ui.notify('Escribe un comentario por favor.', type='warning')
             return
         
+        # --- CORRECCIÓN AQUÍ: OBTENER time_zone Y total_classes DEL OBJETO USER ---
+        user_time_zone = 'UTC' # Valor por defecto
+        user_total_classes = 0 # Valor por defecto
+        
+        session = PostgresSession()
+        try:
+            u_obj = session.query(User).filter(User.username == username).first()
+            if u_obj:
+                # Usar getattr() para evitar errores si los campos no existen
+                user_time_zone = getattr(u_obj, 'time_zone', 'UTC')
+                user_total_classes = getattr(u_obj, 'total_classes', 0) 
+        except Exception as e:
+            logger.error(f"Error obteniendo datos extra usuario: {e}")
+        finally:
+            session.close()
+        # ------------------------------------------------------------------------
+
         review_entry = {
             'id': str(uuid.uuid4()),
             'username': username,
@@ -153,7 +169,9 @@ def teacher_profile_view():
             'surname': current_user_info['surname'],
             'rating': form_state['rating'],
             'comment': form_state['comment'],
-            'date': datetime.now().strftime("%Y-%m-%d")
+            'date': datetime.now().strftime("%Y-%m-%d"),
+            'time_zone': user_time_zone, # Ahora usa el valor correcto
+            'total_classes': user_total_classes
         }
         
         current_reviews = list(profile_data.get('reviews', []))
@@ -212,13 +230,13 @@ def teacher_profile_view():
     # --- UI PRINCIPAL ---
     with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-8 pb-20'):
         
-        # 1. HERO SECTION
+        # 1. HERO SECTION (Se mantiene igual)
         with ui.card().classes('w-full p-8 rounded-3xl bg-white shadow-sm border border-slate-100 flex flex-col md:flex-row gap-8 items-center md:items-start'):
             # Foto
             if profile_data.get('photo') and profile_data['photo'].startswith('data:'):
                  ui.html(f'<img src="{profile_data["photo"]}" class="w-48 h-48 rounded-full object-cover border-4 border-rose-100 shadow-md flex-shrink-0 bg-slate-100" />', sanitize=False)
             else:
-                 with ui.image(profile_data.get('photo', '')).classes('w-48 h-48 rounded-full object-cover border-4 border-rose-100 shadow-md flex-shrink-0 bg-slate-100'):
+                with ui.image(profile_data.get('photo', '')).classes('w-48 h-48 rounded-full object-cover border-4 border-rose-100 shadow-md flex-shrink-0 bg-slate-100'):
                     pass
             
             with ui.column().classes('flex-1 gap-1 text-center md:text-left w-full'):
@@ -251,7 +269,7 @@ def teacher_profile_view():
                             ui.button(icon=icon_whatsapp, on_click=lambda: open_social_link(wa_url)) \
                                 .props('flat round dense size=md color=green').tooltip('WhatsApp')
 
-        # 2. CONTENIDO PRINCIPAL
+        # 2. CONTENIDO PRINCIPAL (Se mantiene igual)
         with ui.grid().classes('w-full grid-cols-1 lg:grid-cols-3 gap-8'):
             
             # COLUMNA IZQ (Ancha)
@@ -334,10 +352,10 @@ def teacher_profile_view():
                                         # preload="metadata" carga lo justo para mostrar la imagen
                                         ui.html(f'''
                                             <video src="{item_src}#t=0.5" 
-                                                   style="width:100%; height:100%; object-fit:cover;" 
-                                                   preload="metadata" 
-                                                   muted 
-                                                   playsinline>
+                                                    style="width:100%; height:100%; object-fit:cover;" 
+                                                    preload="metadata" 
+                                                    muted 
+                                                    playsinline>
                                             </video>
                                         ''', sanitize=False).classes('w-full h-full absolute inset-0')
                                         
@@ -349,10 +367,6 @@ def teacher_profile_view():
                                         # Imagen normal
                                         ui.html(f'<img src="{item_src}" style="width:100%; height:100%; object-fit:cover;" />', sanitize=False).classes('w-full h-full')
                                         
-                                        # Overlay hover para imágenes
-                                        with ui.element('div').classes('absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-10'):
-                                            ui.icon('zoom_in', color='white').classes('opacity-0 group-hover:opacity-100 transition-opacity')
-                                    
                                     # Click Handler para abrir Lightbox (Capa invisible superior)
                                     ui.element('div').classes('absolute inset-0 z-20').on('click', lambda src=item_src: open_lightbox(src))
                                     
@@ -386,26 +400,47 @@ def teacher_profile_view():
                     with ui.grid().classes('w-full grid-cols-1 md:grid-cols-2 gap-4'):
                         for rev in reversed(reviews[-6:]): 
                             with ui.card().classes('p-4 rounded-2xl border border-slate-100 shadow-sm bg-white relative group'):
+                                
                                 # Botón borrar
                                 if is_admin or (username and rev.get('username') == username):
                                     ui.button(icon='delete', on_click=lambda r_id=rev.get('id'): delete_review(r_id)) \
                                         .props('flat round dense color=grey-400').classes('absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10')
 
                                 with ui.row().classes('justify-between items-start w-full mb-2'):
-                                    with ui.row().classes('items-center gap-2'):
-                                        ui.icon('account_circle', color='slate-300', size='md')
-                                        with ui.column().classes('gap-0'):
+                                    with ui.row().classes('items-center gap-3'):
+                                        # Avatar simple
+                                        ui.icon('account_circle', color='slate-300', size='3em')
+                                        
+                                        with ui.column().classes('gap-0.5'):
+                                            # Nombre
                                             full_name = f"{rev.get('name', '')} {rev.get('surname', '')}".strip()
                                             display_name = full_name if full_name else rev.get('username', 'Anónimo')
                                             ui.label(display_name).classes('font-bold text-slate-700 text-sm')
-                                            ui.label(rev.get('date', '')).classes('text-[10px] text-slate-400')
+                                            
+                                            # --- ESTILOS MEJORADOS PARA BADGES DE INFO ---
+                                            with ui.row().classes('items-center gap-1'):
+                                                classes_count = rev.get('total_classes', 0)
+                                                
+                                                ui.label(f'Clases: {classes_count}').classes('text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full font-bold shadow-xs')
+
+                                                # BADGE TIMEZONE (Destacado)
+                                                time_zone_val = rev.get('time_zone', 'UTC')
+                                                ui.label(f'Zona: {time_zone_val}').classes('text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold shadow-xs')
+                                                
+                                                # Fecha
+                                                ui.label(f"Fecha: {rev.get('date', '')}").classes('text-[10px] text-slate-400')
+                                            # ------------------------------------------------
+
+                                    # Estrellas (Derecha arriba)
                                     with ui.row().classes('gap-0'):
                                         for i in range(5):
                                             icon_name = 'star' if i < int(rev.get('rating', 0)) else 'star_border'
                                             ui.icon(icon_name, color='amber-400', size='xs')
-                                ui.label(rev.get('comment', '')).classes('text-slate-600 text-sm italic')
+                                
+                                # Comentario
+                                ui.label(rev.get('comment', '')).classes('text-slate-600 text-sm italic mt-2')
 
-                # Formulario
+                # Formulario (Se mantiene igual)
                 if is_client and username:
                     with ui.card().classes('w-full mt-6 p-6 rounded-2xl border border-rose-100 bg-rose-50/30'):
                         ui.label('Deja tu reseña').classes('text-lg font-bold text-rose-800 mb-4')

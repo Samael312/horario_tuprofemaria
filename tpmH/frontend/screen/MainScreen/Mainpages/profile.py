@@ -76,6 +76,13 @@ def profile():
                             info_item('Email', getattr(user_obj, 'email', 'N/A'), 'mail')
                             info_item('Objetivo', getattr(user_obj, 'goal', 'Objetivo'), 'assignment')
                             info_item('Zona Horaria', getattr(user_obj, 'time_zone', 'UTC'), 'public')
+                            
+                            # --- MÉTODOS DE PAGO DESDE payment_info ---
+                            payment_info = getattr(user_obj, 'payment_info', {}) or {}
+                            methods = payment_info.get('preferred_methods', [])
+                            methods_str = ", ".join(methods) if methods else "N/A"
+
+                            info_item('Métodos de Pago', methods_str, 'credit_card')
 
                     # 2. Tarjeta Paquete
                     rgh_obj = session.query(SchedulePref).filter(SchedulePref.username == username).first()
