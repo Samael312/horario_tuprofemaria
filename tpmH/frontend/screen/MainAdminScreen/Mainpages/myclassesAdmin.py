@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 STATUS_OPTIONS = {
     'Pendiente': {'color': 'orange', 'icon': 'schedule'},
     'Prueba_Pendiente': {'color': 'purple', 'icon': 'science'}, 
+    'Finalizada': {'color': 'teal', 'icon': 'task_alt'},
     'Completada': {'color': 'green', 'icon': 'check_circle'},
     'Cancelada': {'color': 'red', 'icon': 'cancel'},
     'No Asistió': {'color': 'grey', 'icon': 'person_off'}
