@@ -114,7 +114,7 @@ def adv_method():
                         # --- AVISO IMPORTANTE (Movido aquí para que se vea bien) ---
                         with ui.row().classes('w-full bg-blue-50 border border-blue-100 rounded-lg p-3 gap-3 items-start'):
                             ui.icon('info', color='blue-600').classes('mt-0.5')
-                            ui.label('Para concretar el pago e iniciar las clases, ponte en contacto con tu profesora. Conatcto en pestaña "Profesora".') \
+                            ui.label('Para concretar el pago e iniciar las clases, ponte en contacto con tu profesora. Contacto en pestaña "Profesora".') \
                                 .classes('text-xs text-blue-800 leading-tight flex-1 font-medium')
 
                         # Título

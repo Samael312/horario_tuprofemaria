@@ -7,6 +7,9 @@ from components.botones.button_dur import make_add_hour_button
 from components.h_selection import make_selection_handler
 from components.delete_rows import delete_selected_rows_v2
 from components.save.save_rgo import create_save_schedule_button
+from components.save.save_asg import create_save_asgn_classes
+from db.postgres_db import PostgresSession
+from db.models import User, SchedulePref, AsignedClasses
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -47,14 +50,30 @@ def new_student():
 
             # Cuerpo de Tarjeta
             with ui.column().classes('p-6 w-full gap-6'):
+
+                 # Verificar sesión
+                username = app.storage.user.get("username")
+                if not username:
+                    ui.navigate.to('/login')
+                    return
+                            
+                session = PostgresSession()
+               
+                user_obj = session.query(User).filter(User.username == username).first()
+                    
+                if not user_obj:
+                        ui.notify("Usuario no encontrado", type='negative')
                 
-                # --- Fila 1: Paquete y Duración (Grid) ---
-                with ui.grid(columns=2).classes('w-full gap-6'):
-                    default_plan = app.storage.user.get('selected_plan', None)
-                    # Selector Paquete
-                    package_selector = ui.select(pack_of_classes, label='Paquete Seleccionado', value= default_plan)\
-                        .props('outlined dense options-dense behavior="menu"').classes('w-full')
+                package = user_obj.package
+
+                # 1. Configuración General
+                with ui.grid(columns=2).classes('w-full gap-4'):
+                    app.storage.user.get('selected_plan')
+                    
+                    package_selector = ui.select(pack_of_classes, label='Paquete Activo', value=package)\
+                        .props('outlined dense options-dense behavior="menu"').classes('w-full md:w-1/3')
                     package_selector.add_slot('prepend', '<q-icon name="inventory_2" />')
+            
 
                     # Selector Duración
                     duration_selector = ui.select(duration_options, label='Duración de Clase')\

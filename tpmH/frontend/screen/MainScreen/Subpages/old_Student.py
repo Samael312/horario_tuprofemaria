@@ -11,6 +11,8 @@ from components.delete_rows import delete_selected_rows_v2
 # Importar nuestros componentes de guardado "Inteligentes" (Neon -> SQLite)
 from components.save.save_rgo import create_save_schedule_button
 from components.save.save_asg import create_save_asgn_classes
+from db.postgres_db import PostgresSession
+from db.models import User, SchedulePref, AsignedClasses
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -79,11 +81,24 @@ def show_existing_classes(container):
                 ui.label('Agendar Clases Pendientes').classes('text-lg font-bold text-gray-800')
 
             with ui.column().classes('p-6 w-full gap-6'):
+
+                # Verificar sesión
+                username = app.storage.user.get("username")
+                if not username:
+                    ui.navigate.to('/login')
+                    return
+                            
+                session = PostgresSession()
+               
+                user_obj = session.query(User).filter(User.username == username).first()
+                    
+                if not user_obj:
+                        ui.notify("Usuario no encontrado", type='negative')
                 
+                package = user_obj.package
                 # 1. Selección de Paquete
                 with ui.row().classes('w-full items-center'):
-                    default_plan = app.storage.user.get('selected_plan', None)
-                    package_selector = ui.select(pack_of_classes, label='Paquete Activo', value=default_plan)\
+                    package_selector = ui.select(pack_of_classes, label='Paquete Activo', value=package)\
                         .props('outlined dense options-dense behavior="menu"').classes('w-full md:w-1/3')
                     package_selector.add_slot('prepend', '<q-icon name="inventory_2" />')
 
@@ -148,7 +163,7 @@ def show_existing_classes(container):
                 selection_handler, selection_state = make_selection_handler(table1, logger=logger)
                 table1.on('selection', selection_handler)
 
-                # Vinculación lógica botón agregar
+                 # Vinculación lógica botón agregar
                 make_add_hours_by_date_button(
                     add_hour_btn1,
                     button_id=f"asignadas_de_{user}",
@@ -172,6 +187,115 @@ def show_existing_classes(container):
                     package_selector=package_selector
                 )
 
+    with container:
+        with ui.card().classes('w-full shadow-lg rounded-xl overflow-hidden border border-gray-200 p-0'):
+            
+            # Header
+            with ui.row().classes('w-full bg-pink-50 p-4 border-b border-pink-100 items-center gap-3'):
+                ui.icon('settings_suggest', color='pink-600', size='sm')
+                ui.label('Definir Preferencia de Horario Semanal').classes('text-lg font-bold text-gray-800')
+
+            with ui.column().classes('p-6 w-full gap-6'):
+        # 1. Configuración General
+                with ui.grid(columns=2).classes('w-full gap-4'):
+
+                    # Duración
+                    duration_selector3 = ui.select(duration_options, label='Duración Típica')\
+                        .props('outlined dense').classes('w-full')
+                    duration_selector3.add_slot('prepend', '<q-icon name="timer" />')
+
+                # Días Disponibles
+                day_selector = ui.select(days_of_week, label='Días Habilitados', multiple=True, value=[])\
+                    .props('outlined dense use-chips').classes('w-full')
+                
+                ui.separator()
+
+                # 2. Barra de Herramientas (Rango de horas)
+                ui.label('Añadir Bloque de Disponibilidad').classes('text-sm font-bold text-gray-500 uppercase')
+                
+                with ui.row().classes('w-full bg-gray-50 p-4 rounded-lg border border-gray-200 items-center gap-4 wrap'):
+                    
+                    with ui.row().classes('items-center gap-2'):
+                        # Hora Inicio
+                        with ui.input('Desde').props('outlined dense bg-white mask="time" placeholder="00:00"').classes('w-28') as start_time:
+                            with ui.menu().props('no-parent-event') as menu1:
+                                with ui.time().bind_value(start_time):
+                                    with ui.row().classes('justify-end'):
+                                        ui.button('OK', on_click=menu1.close).props('flat dense')
+                            with start_time.add_slot('append'):
+                                ui.icon('access_time').on('click', menu1.open).classes('cursor-pointer text-gray-600')
+
+                        ui.label('-').classes('text-gray-400 font-bold')
+
+                        # Hora Fin
+                        with ui.input('Hasta').props('outlined dense bg-white mask="time" placeholder="00:00"').classes('w-28') as end_time:
+                            with ui.menu().props('no-parent-event') as menuD2:
+                                with ui.time().bind_value(end_time):
+                                    with ui.row().classes('justify-end'):
+                                        ui.button('OK', on_click=menuD2.close).props('flat dense')
+                            with end_time.add_slot('append'):
+                                ui.icon('access_time').on('click', menuD2.open).classes('cursor-pointer text-gray-600')
+
+                    add_hour_btn3 = ui.button('Añadir Rango', icon='playlist_add', color='pink-600').props('push')
+
+                # 3. Tabla de Resultados (Style)
+                ui.label("Horario Propuesto").classes('text-lg font-bold mt-4')
+
+                # Columnas dinámicas bonitas
+                cols = [{'name': 'hora', 'label': 'HORA', 'field': 'hora', 'sortable': True, 'align': 'center', 'headerClasses': 'bg-gray-100 font-bold'}] + \
+                        [{'name': d, 'label': d[:3].upper(), 'field': d, 'align': 'center', 'headerClasses': 'bg-pink-100 text-pink-800 font-bold'} for d in days_of_week]
+
+                table5 = ui.table(
+                    columns=cols,
+                    rows=[{'hora': h, **{d: '' for d in days_of_week}} for h in hours_of_day],
+                    selection='multiple',
+                    row_key='hora'
+                ).classes('w-full border border-gray-200 rounded-lg overflow-hidden').props('flat bordered separator=cell density=compact')
+
+                # Footer Tabla
+                with ui.row().classes('w-full justify-between items-center mt-2'):
+                    with ui.row().classes('gap-2'):
+                        ui.button('Limpiar', on_click=lambda: clear_table(table5, group_data2), icon='cleaning_services', color='warning').props('flat dense')
+                        ui.button('Borrar Seleccionados', icon='delete', color='negative', on_click=lambda: delete_selected_rows_v2(table5, selection_state3, id_column="hora")).props('flat dense')
+
+                    save_button2 = ui.button('Guardar Preferencias', icon='save', color='positive').props('push')
+
+                # Handlers
+                selection_handler3, selection_state3 = make_selection_handler(table5, logger=logger)
+                table5.on('selection', selection_handler3)
+
+                # Botones lógicos
+                make_add_hour_button(
+                    add_hour_btn3,
+                    button_id=f"rangos_horario_de_{user}",
+                    day_selector=day_selector,
+                    duration_selector=duration_selector3,
+                    time_input=start_time,
+                    end_time_input=end_time,
+                    valid_hours=hours_of_day,
+                    group_data=group_data2,
+                    days_of_week=days_of_week,
+                    table=table5,
+                    notify_success="Rango horario añadido",
+                    notify_missing_day="Selecciona al menos un día arriba",
+                    notify_missing_duration="Falta duración",
+                    notify_missing_time="Falta inicio",
+                    notify_missing_end_time="Falta fin",
+                    notify_invalid_hour="Hora inválida",
+                    notify_bad_format="Formato HH:MM",
+                    notify_interval_invalid="Intervalo inválido"
+                )
+                
+                create_save_schedule_button(
+                    button=save_button2,
+                    table=table5,
+                    days_of_week=days_of_week,
+                    duration_selector=duration_selector3,
+                    package_selector=package_selector
+                )
+
+               
+
 # ==========================================
 # LÓGICA 2: NUEVO HORARIO (PREFERENCIA)
 # ==========================================
@@ -187,12 +311,27 @@ def show_new_student_like(container):
                 ui.label('Definir Preferencia de Horario Semanal').classes('text-lg font-bold text-gray-800')
 
             with ui.column().classes('p-6 w-full gap-6'):
+                # Verificar sesión
+                username = app.storage.user.get("username")
+                if not username:
+                    ui.navigate.to('/login')
+                    return
+                            
+                session = PostgresSession()
+               
+                user_obj = session.query(User).filter(User.username == username).first()
+                    
+                if not user_obj:
+                        ui.notify("Usuario no encontrado", type='negative')
+                
+                package = user_obj.package
 
                 # 1. Configuración General
                 with ui.grid(columns=2).classes('w-full gap-4'):
-                    # Paquete
-                    package_selector = ui.select(pack_of_classes, label='Paquete')\
-                        .props('outlined dense options-dense').classes('w-full')
+                    app.storage.user.get('selected_plan')
+                    
+                    package_selector = ui.select(pack_of_classes, label='Paquete Activo', value=package)\
+                        .props('outlined dense options-dense behavior="menu"').classes('w-full md:w-1/3')
                     package_selector.add_slot('prepend', '<q-icon name="inventory_2" />')
 
                     # Duración

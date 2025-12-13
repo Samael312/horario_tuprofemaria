@@ -328,24 +328,37 @@ def teacher_profile_view():
                             for i, item_src in enumerate(gallery_items):
                                 is_video = item_src.lower().endswith('.mp4')
                                 
-                                with ui.card().classes('w-full h-32 p-0 rounded-xl overflow-hidden cursor-pointer group shadow-sm transition-all hover:shadow-md border border-slate-100 relative bg-black'):
+                                # Nota: Agregamos 'relative' para posicionar el clicker absoluto
+                                with ui.card().classes('w-full h-32 p-0 rounded-xl overflow-hidden shadow-sm transition-all hover:shadow-md border border-slate-100 relative bg-black group'):
+                                    
+                                    # 1. RENDERIZADO VISUAL
                                     if is_video:
+                                        # Preview del video (muted, sin controles)
                                         ui.html(f'''
                                             <video src="{item_src}#t=0.5" 
-                                                    style="width:100%; height:100%; object-fit:cover;" 
-                                                    preload="metadata" 
-                                                    muted 
-                                                    playsinline>
+                                                   style="width:100%; height:100%; object-fit:cover;" 
+                                                   preload="metadata" 
+                                                   muted 
+                                                   playsinline>
                                             </video>
                                         ''', sanitize=False).classes('w-full h-full absolute inset-0')
+                                        
+                                        # Icono de Play encima (visual)
                                         with ui.column().classes('absolute inset-0 items-center justify-center bg-black/10 group-hover:bg-black/30 transition-colors z-10'):
-                                              ui.icon('play_circle_outline', size='3em', color='white').classes('opacity-90 drop-shadow-md')
+                                             ui.icon('play_circle_outline', size='3em', color='white').classes('opacity-90 drop-shadow-md')
                                     else:
+                                        # Imagen
                                         ui.html(f'<img src="{item_src}" style="width:100%; height:100%; object-fit:cover;" />', sanitize=False).classes('w-full h-full')
-                                        ui.element('div').classes('absolute inset-0 z-20').on('click', lambda src=item_src: open_lightbox(src))
-                                        if not is_video:
-                                            with ui.element('div').classes('absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-10'):
-                                                ui.icon('zoom_in', color='white').classes('opacity-0 group-hover:opacity-100 transition-opacity')
+                                        
+                                        # Icono zoom al hacer hover (visual)
+                                        with ui.element('div').classes('absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none z-10'):
+                                            ui.icon('zoom_in', color='white').classes('opacity-0 group-hover:opacity-100 transition-opacity')
+
+                                    # 2. CAPTURADOR DE CLIC (LA SOLUCIÓN)
+                                    # Este div transparente cubre TODA la tarjeta (sea video o foto) y dispara el lightbox
+                                    # Usamos lambda _, s=item_src: ... para asegurar que capturamos el item correcto del loop
+                                    ui.element('div').classes('absolute inset-0 z-20 cursor-pointer') \
+                                        .on('click', lambda _, s=item_src: open_lightbox(s))
 
         # 3. SECCIÓN DE REVIEWS
         ui.separator().classes('my-8 bg-slate-200')

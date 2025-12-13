@@ -55,6 +55,7 @@ def homework_page():
                         'student': f"{shw.name} {shw.surname}", 
                         'title': hw.title,
                         'due_date': hw.date_due, 
+                        'content': hw.content,
                         'submission': shw.submission, 
                         'status': shw.status,
                         'full_grade_json': grade_data, 
@@ -78,119 +79,162 @@ def homework_page():
             finally:
                 session.close()
 
-        # --- Diálogo de Evaluación ---
+        # --- Diálogo de Evaluación (CORREGIDO) ---
         def open_grade_dialog(row):
-            # Validación: Si está pendiente y NO está vencida, avisar y salir.
-            if row['status'] == 'Pending' and not row['is_overdue']:
-                ui.notify('El estudiante aún no ha realizado esta actividad.', type='warning', icon='hourglass_empty')
-                return
+            # NOTA: Se ha eliminado el bloqueo que impedía abrir tareas "Pending".
+            # Esto permite al profesor poner un 0 o feedback manual aunque el alumno no haya enviado nada.
 
             with ui.dialog() as d, ui.card().classes('w-full max-w-2xl p-0 rounded-2xl overflow-hidden shadow-xl'):
                 
                 # Header
                 with ui.row().classes('w-full bg-slate-50 p-6 items-center justify-between border-b border-slate-100'):
                     with ui.row().classes('items-center gap-4'):
-                        with ui.element('div').classes('bg-pink-100 p-3 rounded-full'):
-                            ui.icon('school', color='pink-600', size='sm')
+                        # Icono dinámico según estado
+                        icon_color = 'slate-400'
+                        if row['status'] == 'Graded': icon_color = 'green-600'
+                        elif row['is_overdue']: icon_color = 'red-500'
+                        
+                        with ui.element('div').classes(f'bg-slate-100 p-3 rounded-full'):
+                            ui.icon('school', color=icon_color, size='sm')
+                        
                         with ui.column().classes('gap-0'):
                             ui.label(row['student']).classes('text-lg font-bold text-slate-800 leading-tight')
                             ui.label(f"Tarea: {row['title']}").classes('text-sm text-slate-500')
                     ui.button(icon='close', on_click=d.close).props('flat round dense color=slate')
 
-                # Contenido
-                with ui.column().classes('w-full p-6 gap-6'):
-                    
-                    # --- SECCIÓN VENCIMIENTO (Solo si está vencida) ---
-                    new_date_input = None 
-                    if row['is_overdue']:
-                        with ui.card().classes('w-full bg-red-50 border border-red-200 p-4'):
-                            with ui.row().classes('items-center gap-2'):
-                                ui.icon('event_busy', color='red-500')
-                                ui.label('Esta tarea está vencida.').classes('text-red-700 font-bold')
-                            
-                            ui.label('Puedes extender la fecha límite para permitir la entrega:').classes('text-sm text-red-600 mt-1')
-                            
-                            with ui.input('Nueva Fecha de Vencimiento', value=row['due_date']).props('outlined dense bg-white') as new_date_input:
-                                with ui.menu().props('no-parent-event') as menu:
-                                    with ui.date().bind_value(new_date_input).on('input', menu.close): pass
-                                with new_date_input.add_slot('append'):
-                                    ui.icon('edit_calendar').classes('cursor-pointer').on('click', menu.open)
-
-                    # --- RESPUESTA DEL ESTUDIANTE ---
-                    with ui.column().classes('w-full gap-2'):
-                        ui.label('Respuesta del Estudiante').classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
-                        if row['submission']:
-                            with ui.scroll_area().classes('h-40 w-full bg-slate-50 border border-slate-200 rounded-xl p-4'):
-                                ui.label(row['submission']).classes('text-slate-700 font-medium leading-relaxed')\
-                                    .style('white-space: pre-wrap; font-family: sans-serif;')
-                        else:
-                            msg = "Sin entrega (Vencida)" if row['is_overdue'] else "El estudiante no envió texto"
-                            color_icon = "red-300" if row['is_overdue'] else "slate-300"
-                            with ui.row().classes('w-full h-24 items-center justify-center bg-slate-50 rounded-xl border border-dashed'):
-                                ui.icon('assignment_late', color=color_icon, size='md')
-                                ui.label(msg).classes('text-slate-400 text-sm')
-
-                    ui.separator()
-
-                    # --- FORMULARIO DE EVALUACIÓN ---
-                    existing_data = row['full_grade_json']
-                    current_score = existing_data.get('score') # Devuelve None si no existe, evita ValueError
-                    
-                    with ui.grid().classes('w-full grid-cols-1 sm:grid-cols-2 gap-4'):
-                        score_input = ui.number('Nota (Max 10)', value=current_score, min=0, max=10)\
-                            .props('outlined dense prepend-icon=star color=amber-800').classes('w-full')
+                # Contenido Scrollable
+                with ui.scroll_area().classes('w-full p-6 gap-6 max-h-[70vh]'):
+                    with ui.column().classes('w-full gap-6'):
                         
-                        status_select = ui.select(['Pending', 'Submitted', 'Graded'], value='Graded', label='Estado')\
-                            .props('outlined dense prepend-icon=verified color=green').classes('w-full')
+                        # --- SECCIÓN VENCIMIENTO ---
+                        # Inicializamos la variable fuera del if para que 'save()' pueda verla siempre
+                        new_date_input = None 
+                        
+                        if row['is_overdue']:
+                            with ui.card().classes('w-full bg-red-50 border border-red-200 p-4'):
+                                with ui.row().classes('items-center gap-2'):
+                                    ui.icon('event_busy', color='red-500')
+                                    ui.label('Esta tarea está vencida.').classes('text-red-700 font-bold')
+                                
+                                ui.label('Si cambias la fecha aquí, se actualizará para ESTA tarea general (todos los alumnos).').classes('text-xs text-red-600 mt-1 italic')
+                                
+                                with ui.input('Extender Fecha Límite', value=row['due_date']).props('outlined dense bg-white') as new_date_input:
+                                    with ui.menu().props('no-parent-event') as menu:
+                                        with ui.date().bind_value(new_date_input).on('input', menu.close): pass
+                                    with new_date_input.add_slot('append'):
+                                        ui.icon('edit_calendar').classes('cursor-pointer').on('click', menu.open)
 
-                    feedback_input = ui.textarea('Retroalimentación', value=existing_data.get('feedback', ''))\
-                        .props('outlined rows=3 prepend-icon=chat_bubble_outline color=indigo').classes('w-full')
+                        #---- INSTRUCCION DE LA TAREA-----
+                        with ui.column().classes('w-full gap-2'):
+                            ui.label('Instrucción de la tarea').classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
+                            content_text = row['content'] if row['content'] else "Sin instrucciones detalladas."
+                            ui.markdown(content_text).classes('text-slate-700 text-sm bg-slate-50 p-3 rounded border border-slate-100 w-full')
 
-                # Footer
+                        ui.separator()
+
+                        # --- RESPUESTA DEL ESTUDIANTE ---
+                        with ui.column().classes('w-full gap-2'):
+                            ui.label('Respuesta del Estudiante').classes('text-xs font-bold text-slate-400 uppercase tracking-wider')
+                            
+                            if row['submission']:
+                                with ui.card().classes('w-full bg-blue-50 border border-blue-100 p-4 rounded-xl'):
+                                    ui.label(row['submission']).classes('text-slate-800 font-medium leading-relaxed')\
+                                        .style('white-space: pre-wrap; font-family: sans-serif;')
+                            else:
+                                # Mensaje visual si no hay entrega
+                                msg = "El estudiante no ha enviado nada aún."
+                                icon_status = "hourglass_empty"
+                                color_status = "slate-300"
+                                
+                                if row['is_overdue']:
+                                    msg = "Sin entrega y tarea vencida."
+                                    icon_status = "assignment_late"
+                                    color_status = "red-300"
+
+                                with ui.row().classes('w-full h-24 items-center justify-center bg-slate-50 rounded-xl border border-dashed gap-3'):
+                                    ui.icon(icon_status, color=color_status, size='md')
+                                    ui.label(msg).classes('text-slate-400 text-sm italic')
+
+                        ui.separator()
+
+                        # --- FORMULARIO DE EVALUACIÓN ---
+                        existing_data = row['full_grade_json']
+                        current_score = existing_data.get('score')
+                        
+                        with ui.card().classes('w-full p-4 border border-indigo-100 shadow-sm'):
+                            ui.label('Zona de Calificación').classes('text-sm font-bold text-indigo-900 mb-2')
+                            
+                            with ui.grid().classes('w-full grid-cols-1 sm:grid-cols-2 gap-4'):
+                                score_input = ui.number('Nota (0 - 10)', value=current_score, min=0, max=10, step=0.1)\
+                                    .props('outlined dense prepend-icon=star color=amber-800').classes('w-full')
+                                
+                                # Lógica para autoseleccionar status si no está definido
+                                default_status = row['status']
+                                if default_status == 'Pending': default_status = 'Graded' # Sugerir Graded por defecto al abrir
+
+                                status_select = ui.select(['Pending', 'Submitted', 'Graded'], value=default_status, label='Estado')\
+                                    .props('outlined dense prepend-icon=verified color=green').classes('w-full')
+
+                            feedback_input = ui.textarea('Retroalimentación para el alumno', value=existing_data.get('feedback', ''))\
+                                .props('outlined rows=3 prepend-icon=chat_bubble_outline color=indigo').classes('w-full mt-2')
+
+                # Footer Actions
                 with ui.row().classes('w-full p-4 bg-slate-50 border-t border-slate-100 justify-end gap-3'):
                     ui.button('Cancelar', on_click=d.close).props('flat color=slate no-caps')
                     
                     def save():
                         session = PostgresSession()
                         try:
-                            # 1. Actualizar Fecha
-                            if new_date_input and new_date_input.value != row['due_date']:
-                                hw_master = session.query(HWork).filter(HWork.id == row['homework_id']).first()
-                                if hw_master:
-                                    hw_master.date_due = new_date_input.value
-                                    ui.notify(f'Fecha extendida a: {new_date_input.value}', type='info')
+                            # 1. Actualizar Fecha (Solo si existe el input y cambió el valor)
+                            if new_date_input and new_date_input.value:
+                                if new_date_input.value != row['due_date']:
+                                    hw_master = session.query(HWork).filter(HWork.id == row['homework_id']).first()
+                                    if hw_master:
+                                        hw_master.date_due = new_date_input.value
+                                        ui.notify(f'Fecha extendida globalmente a: {new_date_input.value}', type='info')
                             
                             # 2. Guardar Nota
                             item = session.query(StudentHWork).filter(StudentHWork.id == row['id']).first()
                             if item:
-                                if score_input.value is not None:
+                                final_score_val = None
+                                
+                                # Validación segura de número
+                                if score_input.value is not None and str(score_input.value).strip() != "":
                                     try:
-                                        val = float(score_input.value)
-                                        if val < 0 or val > 10:
-                                            ui.notify('Nota inválida (0-10)', type='negative')
+                                        final_score_val = float(score_input.value)
+                                        if final_score_val < 0 or final_score_val > 10:
+                                            ui.notify('La nota debe estar entre 0 y 10', type='warning')
                                             return
-                                    except: pass
+                                    except ValueError:
+                                        ui.notify('La nota debe ser un número válido', type='negative')
+                                        return
 
                                 new_grade_json = {
-                                    "score": score_input.value if score_input.value is not None else "",
+                                    "score": final_score_val if final_score_val is not None else None,
                                     "feedback": feedback_input.value,
                                     "graded_at": datetime.now().strftime("%Y-%m-%d %H:%M")
                                 }
+                                
                                 item.grade = new_grade_json
                                 item.status = status_select.value
                                 
                                 session.commit()
-                                ui.notify('Cambios guardados', type='positive', icon='check_circle')
+                                ui.notify('Calificación guardada correctamente', type='positive', icon='check_circle')
+                                
+                                # Refrescamos el dashboard principal
                                 refresh_dashboard.refresh()
                                 d.close()
+                            else:
+                                ui.notify('No se encontró el registro del alumno', type='negative')
                                 
                         except Exception as e:
-                            ui.notify(f'Error al guardar: {e}', type='negative')
+                            session.rollback()
+                            ui.notify(f'Error al guardar: {str(e)}', type='negative')
                         finally:
                             session.close()
 
-                    ui.button('Guardar Cambios', on_click=save, icon='save')\
-                        .props('unelevated color=green-600 no-caps').classes('px-6 shadow-lg shadow-green-100')
+                    ui.button('Guardar Evaluación', on_click=save, icon='save')\
+                        .props('unelevated color=indigo-600 no-caps').classes('px-6 shadow-lg shadow-indigo-100')
             d.open()
 
         # --- Componente Visual: Tarjeta de Tarea ---

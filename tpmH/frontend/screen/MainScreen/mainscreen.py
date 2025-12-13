@@ -57,7 +57,7 @@ def mainscreen():
             # (Útil si borró sus datos pero quiere entrar al flujo manual)
             # ==========================================
             with ui.card().classes('w-full md:w-80 p-6 items-center text-center shadow-lg hover:shadow-2xl transition-all duration-300 border-t-4 border-blue-500 rounded-xl cursor-pointer') \
-                    .on('click', lambda: ui.navigate.to('/myclasses')): # Redirigimos a myclasses
+                    .on('click', lambda: ui.navigate.to('/oldStudent')): # Redirigimos a myclasses
                 
                 # Icono
                 with ui.element('div').classes('bg-blue-50 p-4 rounded-full mb-4'):
@@ -65,10 +65,10 @@ def mainscreen():
                 
                 # Textos
                 ui.label('Ya soy Estudiante').classes('text-xl font-bold text-gray-800 mb-2')
-                ui.label('Ir directamente a mis clases asignadas y panel de control.').classes('text-sm text-gray-500 mb-6 leading-relaxed')
+                ui.label('Agendar clases anteriores y configurar horario preferencial.').classes('text-sm text-gray-500 mb-6 leading-relaxed')
                 
                 # Botón
-                ui.button('Ver mis Clases', icon='arrow_forward', on_click=lambda: ui.navigate.to('/myclasses')) \
+                ui.button('CONFIGURAR PERFIL', icon='arrow_forward', on_click=lambda: ui.navigate.to('/myclasses')) \
                     .props('rounded outline color=blue').classes('w-full hover:bg-blue-50')
 
             # ==========================================

@@ -6,105 +6,59 @@ import json
 
 @ui.page('/StudentHomework')
 def student_homework_page():
+    # Estilos básicos
     ui.query('body').style('background-color: #F8FAFC; font-family: "Inter", sans-serif;')
     create_main_screen()
 
+    # Verificar Auth
     if not app.storage.user.get('authenticated', False):
         ui.navigate.to('/login')
         return
 
     username = app.storage.user.get('username')
 
-    # --- HELPER: Obtener Tareas ---
+    # 1. Función para obtener datos
     def get_tasks(view_type):
         session = PostgresSession()
         try:
-            # view_type: 'Pending' o 'History'
             query = session.query(StudentHWork, HWork)\
                 .join(HWork, StudentHWork.homework_id == HWork.id)\
                 .filter(StudentHWork.username == username)
             
             if view_type == 'Pending':
-                # Solo traemos las que están estrictamente pendientes
                 query = query.filter(StudentHWork.status == 'Pending')
-            else:
-                # Historial: Enviadas, Completadas o Calificadas
-                query = query.filter(StudentHWork.status != 'Pending')
-            
-            # Ordenar: Pendientes por fecha de vencimiento más cercana, Historial por ID desc
-            if view_type == 'Pending':
                 results = query.order_by(HWork.date_due.asc()).all()
             else:
+                query = query.filter(StudentHWork.status != 'Pending')
                 results = query.order_by(StudentHWork.id.desc()).all()
             
             data = []
             for st_hw, hw in results:
-                # Manejo seguro del JSON Grade
                 grade_data = {}
                 if st_hw.grade:
                     if isinstance(st_hw.grade, dict):
                         grade_data = st_hw.grade
                     elif isinstance(st_hw.grade, str):
-                        try:
-                            grade_data = json.loads(st_hw.grade)
-                        except:
-                            grade_data = {"nota": st_hw.grade} # Fallback si era string antiguo
+                        try: grade_data = json.loads(st_hw.grade)
+                        except: grade_data = {"nota": st_hw.grade}
 
                 data.append({
                     'id': st_hw.id, 
                     'title': hw.title,
-                    'content': hw.content,
+                    'content': hw.content, # Aquí traemos las instrucciones
                     'due_date': hw.date_due,
                     'status': st_hw.status,
-                    'submission': st_hw.submission,
+                    'submission': st_hw.submission, # Aquí traemos la respuesta
                     'grade_info': grade_data 
                 })
             return data
+        except Exception as e:
+            ui.notify(f"Error cargando tareas: {e}", type='negative')
+            return []
         finally:
             session.close()
 
-    # --- ACCIÓN: Enviar Tarea ---
-    def open_solve_dialog(task):
-        with ui.dialog() as d, ui.card().classes('w-full max-w-2xl p-6 rounded-2xl'):
-            # Header
-            with ui.row().classes('justify-between w-full items-start'):
-                with ui.column().classes('gap-1'):
-                    ui.label(task['title']).classes('text-xl font-bold text-slate-800')
-                    ui.label(f"Vence el: {task['due_date']}").classes('text-sm text-red-500 font-medium')
-                ui.button(icon='close', on_click=d.close).props('flat round color=slate')
-
-            ui.separator().classes('my-4')
-            
-            ui.label('Instrucciones:').classes('font-bold text-slate-600')
-            with ui.scroll_area().classes('h-32 w-full bg-slate-50 p-4 rounded-lg border border-slate-100 mb-4'):
-                ui.markdown(task['content'])
-            
-            ui.label('Tu Respuesta:').classes('font-bold text-slate-600')
-            response_input = ui.textarea(placeholder='Escribe aquí tu respuesta...').props('outlined rows=6').classes('w-full')
-
-            def submit():
-                if not response_input.value:
-                    ui.notify('Escribe una respuesta antes de enviar', type='warning')
-                    return
-                
-                session = PostgresSession()
-                try:
-                    st_hw = session.query(StudentHWork).filter(StudentHWork.id == task['id']).first()
-                    if st_hw:
-                        st_hw.submission = response_input.value
-                        # --- CAMBIO IMPORTANTE: Al enviar pasa a 'Submitted' ---
-                        st_hw.status = "Submitted" 
-                        session.commit()
-                        ui.notify('¡Tarea enviada! Se ha movido al historial.', type='positive')
-                        d.close()
-                        refresh_ui() # Esto hará que desaparezca de Pendientes y salga en Historial
-                finally:
-                    session.close()
-
-            ui.button('Enviar y Marcar como Completada', icon='send', on_click=submit).classes('w-full bg-pink-600 text-white mt-2')
-        d.open()
-
-    # --- LISTA PENDIENTES ---
+    # 2. Renderizar lista de pendientes
     def render_pending_list():
         tasks = get_tasks('Pending')
         if not tasks:
@@ -115,25 +69,19 @@ def student_homework_page():
 
         with ui.column().classes('w-full gap-4'):
             for t in tasks:
-                # Tarjeta Pendiente
                 with ui.card().classes('w-full p-4 rounded-xl border-l-4 border-pink-500 shadow-sm flex-row justify-between items-center bg-white'):
                     with ui.column().classes('gap-1'):
                         ui.label(t['title']).classes('font-bold text-slate-800 text-lg')
-                        
-                        # --- CAMBIO: Fecha y Estado juntos ---
                         with ui.row().classes('items-center gap-2'):
-                            # Fecha
                             with ui.row().classes('items-center gap-1 bg-slate-100 px-2 py-1 rounded text-xs text-slate-600'):
                                 ui.icon('event', size='xs')
                                 ui.label(f"Vence: {t['due_date']}")
-                            
-                            # Estado (Siempre será Pending aquí, pero lo mostramos)
                             ui.badge(t['status'], color='orange').props('outline').classes('text-xs')
                     
                     ui.button('Resolver', icon='edit', on_click=lambda x=t: open_solve_dialog(x))\
                         .classes('bg-pink-50 text-pink-600 shadow-none border border-pink-100 hover:bg-pink-100')
 
-    # --- LISTA HISTORIAL ---
+    # 3. Renderizar historial (AQUÍ ESTÁ EL CAMBIO PRINCIPAL)
     def render_history_list():
         tasks = get_tasks('History')
         if not tasks:
@@ -143,45 +91,62 @@ def student_homework_page():
         with ui.column().classes('w-full gap-4'):
             for t in tasks:
                 is_graded = t['status'] == 'Graded'
-                # Color del badge según estado
-                if is_graded: 
-                    badge_col, badge_txt = 'green', 'Calificada'
-                else: 
-                    badge_col, badge_txt = 'blue', 'Enviada'
+                badge_col = 'green' if is_graded else 'blue'
+                badge_txt = 'Calificada' if is_graded else 'Enviada'
                 
-                with ui.card().classes(f'w-full p-4 rounded-xl border border-slate-100 bg-slate-50'):
-                    # Cabecera Card
-                    with ui.row().classes('justify-between items-start w-full'):
-                        with ui.column().classes('gap-1'):
-                            ui.label(t['title']).classes('font-bold text-slate-700')
-                            # Fecha y Estado juntos también en historial
-                            with ui.row().classes('items-center gap-2'):
-                                ui.label(f"Enviada el: {t['due_date']}").classes('text-xs text-slate-400') # O fecha de submission si la tuvieras
-                                ui.badge(badge_txt, color=badge_col).classes('text-xs')
+                with ui.card().classes('w-full p-0 rounded-xl border border-slate-200 overflow-hidden shadow-sm'):
+                    # --- Header de la tarjeta ---
+                    with ui.row().classes('w-full p-4 bg-slate-50 justify-between items-center border-b border-slate-100'):
+                        with ui.column().classes('gap-0'):
+                            ui.label(t['title']).classes('font-bold text-slate-700 text-lg')
+                            ui.label(f"Fecha límite: {t['due_date']}").classes('text-xs text-slate-400')
                         
-                        # Icono decorativo
-                        ui.icon('verified' if is_graded else 'send', color=badge_col, size='md').classes('opacity-20')
-                    
-                    # Si está calificada, mostramos el JSON desglosado
-                    if is_graded:
-                        ui.separator().classes('my-2')
-                        grade_info = t.get('grade_info', {})
-                        
-                        # Asumimos que el JSON tiene claves como 'nota', 'feedback', etc.
-                        # Si no tiene estructura fija, iteramos:
-                        with ui.column().classes('w-full bg-white p-3 rounded border border-green-100 gap-1'):
-                            ui.label('Retroalimentación de la Profesora:').classes('text-xs font-bold text-green-800 mb-1')
-                            
-                            if not grade_info:
-                                ui.label("Sin detalles adicionales.").classes('text-sm text-slate-500')
-                            else:
-                                for key, val in grade_info.items():
-                                    with ui.row().classes('items-start gap-2 w-full'):
-                                        # Capitalizamos la clave (ej: nota -> Nota)
-                                        ui.label(f"{key.capitalize()}:").classes('text-xs font-bold text-slate-600 w-24')
-                                        ui.label(str(val)).classes('text-sm text-slate-800 flex-1')
+                        with ui.row().classes('items-center gap-2'):
+                            ui.badge(badge_txt, color=badge_col).classes('text-xs font-bold')
+                            ui.icon('verified' if is_graded else 'send', color=badge_col, size='sm')
 
-    # --- REFRESCADOR DE UI ---
+                    # --- Cuerpo de la tarjeta ---
+                    with ui.column().classes('w-full p-4 gap-4'):
+                        
+                        # >>> NUEVO: SI ESTÁ CALIFICADA, MOSTRAMOS CONTENIDO Y RESPUESTA <<<
+                        if is_graded:
+                            with ui.grid().classes('w-full grid-cols-1 md:grid-cols-2 gap-4'):
+                                # Columna 1: Instrucciones
+                                with ui.column().classes('gap-1 w-full'):
+                                    ui.label('Instrucciones Originales').classes('text-[10px] font-bold text-slate-400 uppercase tracking-wider')
+                                    with ui.scroll_area().classes('h-32 w-full bg-slate-50 border border-slate-100 rounded p-2'):
+                                        ui.markdown(t['content'] or 'Sin contenido').classes('text-sm text-slate-600')
+                                
+                                # Columna 2: Respuesta del alumno
+                                with ui.column().classes('gap-1 w-full'):
+                                    ui.label('Tu Respuesta Enviada').classes('text-[10px] font-bold text-blue-400 uppercase tracking-wider')
+                                    with ui.scroll_area().classes('h-32 w-full bg-blue-50 border border-blue-100 rounded p-2'):
+                                        ui.label(t['submission']).classes('text-sm text-slate-800').style('white-space: pre-wrap;')
+                            
+                            ui.separator()
+
+                        # --- Zona de Calificación ---
+                        if is_graded:
+                            grade_info = t.get('grade_info', {})
+                            with ui.row().classes('w-full items-start gap-4'):
+                                # Nota Grande
+                                score = grade_info.get('score', '-')
+                                with ui.column().classes('items-center justify-center bg-green-50 p-4 rounded-xl border border-green-100 min-w-[100px]'):
+                                    ui.label(str(score)).classes('text-3xl font-black text-green-600 leading-none')
+                                    ui.label('Nota Final').classes('text-[10px] uppercase text-green-800 font-bold')
+
+                                # Feedback texto
+                                with ui.column().classes('flex-1 gap-1'):
+                                    ui.label('Retroalimentación del profesor:').classes('text-xs font-bold text-slate-500')
+                                    feedback = grade_info.get('feedback', 'Sin comentarios adicionales.')
+                                    ui.label(feedback).classes('text-sm text-slate-700 italic bg-white p-2 rounded w-full')
+                        else:
+                            # Si solo está enviada pero no calificada
+                            with ui.row().classes('w-full justify-center py-2 text-slate-400 gap-2 items-center'):
+                                ui.icon('hourglass_top')
+                                ui.label('Esperando revisión del profesor...')
+
+    # 4. COMPONENTE REFRESCASE
     @ui.refreshable
     def refresh_ui():
         with ui.tabs().classes('w-full text-slate-600') as tabs:
@@ -194,13 +159,64 @@ def student_homework_page():
             with ui.tab_panel(tab_history):
                 render_history_list()
 
+    # 5. DIÁLOGO DE ENVÍO
+    def open_solve_dialog(task):
+        with ui.dialog() as d, ui.card().classes('w-full max-w-3xl p-0 rounded-2xl overflow-hidden'):
+            # Header del diálogo
+            with ui.row().classes('w-full bg-slate-50 p-6 border-b border-slate-100 justify-between items-center'):
+                with ui.column().classes('gap-0'):
+                    ui.label(task['title']).classes('text-xl font-bold text-slate-800')
+                    ui.label('Completa la actividad a continuación').classes('text-sm text-slate-500')
+                ui.button(icon='close', on_click=d.close).props('flat round color=slate')
+
+            # Contenido scrollable
+            with ui.scroll_area().classes('w-full h-[60vh] p-6'):
+                ui.label('Instrucciones:').classes('font-bold text-slate-700 mb-2')
+                ui.markdown(task['content']).classes('text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6')
+                
+                ui.separator().classes('mb-6')
+                
+                ui.label('Tu Respuesta:').classes('font-bold text-slate-700 mb-2')
+                response_input = ui.textarea(placeholder='Escribe tu desarrollo aquí...').props('outlined rows=8').classes('w-full')
+
+            # Footer con botón
+            with ui.row().classes('w-full p-4 bg-slate-50 border-t border-slate-100 justify-end'):
+                def submit():
+                    if not response_input.value:
+                        ui.notify('Escribe una respuesta', type='warning')
+                        return
+                    
+                    session = PostgresSession()
+                    try:
+                        st_hw = session.query(StudentHWork).filter(StudentHWork.id == task['id']).first()
+                        if st_hw:
+                            st_hw.submission = response_input.value
+                            st_hw.status = "Submitted"
+                            session.commit()
+                            ui.notify('Tarea enviada correctamente', type='positive', icon='send')
+                            d.close()
+                            refresh_ui.refresh()
+                    except Exception as e:
+                        session.rollback()
+                        ui.notify(f'Error al enviar: {e}', type='negative')
+                    finally:
+                        session.close()
+
+                ui.button('Enviar Tarea', icon='send', on_click=submit)\
+                    .props('unelevated color=pink-600 no-caps').classes('px-8')
+        
+        d.open()
+
     # --- LAYOUT PRINCIPAL ---
     with ui.column().classes('w-full max-w-5xl mx-auto p-4 md:p-8 gap-8'):
         with ui.row().classes('items-center gap-3'):
-            with ui.element('div').classes('p-2 bg-orange-100 rounded-xl'):
-                ui.icon('assignment', size='lg', color='orange-600')
+            with ui.element('div').classes('p-3 bg-orange-100 rounded-2xl'):
+                ui.icon('assignment', size='md', color='orange-600')
             with ui.column().classes('gap-0'):
                 ui.label('Mis Tareas').classes('text-2xl font-bold text-slate-800')
                 ui.label('Resuelve tus actividades y revisa tus notas').classes('text-sm text-slate-500')
 
         refresh_ui()
+
+if __name__ in {"__main__", "__mp_main__"}:
+    ui.run()

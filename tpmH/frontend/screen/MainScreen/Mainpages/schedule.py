@@ -74,7 +74,17 @@ def scheduleMaker():
         'is_trial': is_trial,
         'duration': 30 if is_trial else 60
     }
-
+    
+    # === NUEVO: DIÁLOGO INFORMATIVO SI ES MODO PRUEBA ===
+    if is_trial:
+        with ui.dialog() as trial_dialog, ui.card().classes('w-[400px] items-center p-6 text-center'):
+            ui.icon('school', size='xl', color='purple-500').classes('mb-2')
+            ui.label('¡Bienvenido/a!').classes('text-xl font-bold text-slate-700')
+            ui.label('Agenda tu clase de prueba, luego de agendar dicha clase las siguientes contaran como parte de tu paquete.').classes('text-sm text-slate-500 my-4')
+            ui.button('Entendido', on_click=trial_dialog.close).props('unelevated color=purple')
+        
+        # Abrimos el dialog después de una pequeña pausa para asegurar que la UI cargó
+        ui.timer(0.5, trial_dialog.open, once=True)
     # =================================================================
     # LÓGICA DE NEGOCIO (MODEL)
     # =================================================================
@@ -127,9 +137,12 @@ def scheduleMaker():
         limit = PACKAGE_LIMITS.get(pkg_name, 0)
         now = datetime.now()
         start_date_str = f"{now.year}-{str(now.month).zfill(2)}"
+        
+        # MODIFICACIÓN: Excluir status que contengan "Prueba"
         current_usage = session.query(AsignedClasses).filter(
             AsignedClasses.username == user_id,
             AsignedClasses.status != 'Cancelled',
+            AsignedClasses.status.notlike('Prueba_Pendiente'), # NO contar pruebas
             AsignedClasses.date.startswith(start_date_str)
         ).count()
         return pkg_name, limit, current_usage
@@ -203,20 +216,23 @@ def scheduleMaker():
         try:
             pkg, limit, used = get_current_package_usage(session, username)
             
-            if limit > 0 and used >= limit:
+            # Solo validamos límite si NO es prueba
+            if not state['is_trial'] and limit > 0 and used >= limit:
                 ui.notify(f"Límite mensual alcanzado ({used}/{limit})", type='negative')
                 return False
             
+            # Cálculo de histórico (Excluyendo pruebas)
             total_lifetime_used = session.query(AsignedClasses).filter(
                 AsignedClasses.username == username,
-                AsignedClasses.status != 'Cancelled'
+                AsignedClasses.status != 'Cancelled',
+                AsignedClasses.status.notlike('Prueba_Prueba') # NO contar pruebas
             ).count()
-            new_total_classes_seq = total_lifetime_used + 1
 
             user_db = session.query(User).filter_by(username=username).first()
             student_tz = user_db.time_zone or "UTC"
             duration = state['duration']
             
+            # Cálculos de tiempo
             s_str = str(slot_int).zfill(4)
             sh, sm = int(s_str[:2]), int(s_str[2:])
             start_dt_obj = datetime(2000, 1, 1, sh, sm)
@@ -231,8 +247,17 @@ def scheduleMaker():
             )
 
             status_to_save = "Prueba_Pendiente" if state['is_trial'] else "Pendiente"
-            current_class_num = used + 1
-            count_label = f"{current_class_num}/{limit}" if limit > 0 else f"{current_class_num}"
+            
+            # --- LÓGICA DE CONTADORES ---
+            if state['is_trial']:
+                # Si es prueba, NO asignamos contadores numéricos
+                count_label = None 
+                new_total_classes_seq = None
+            else:
+                # Si es normal, incrementamos
+                current_class_num = used + 1
+                count_label = f"{current_class_num}/{limit}" if limit > 0 else f"{current_class_num}"
+                new_total_classes_seq = total_lifetime_used + 1
 
             new_class = AsignedClasses(
                 username=username, name=user_db.name, surname=user_db.surname,
@@ -241,12 +266,13 @@ def scheduleMaker():
                 start_prof_time=sp_time, end_prof_time=ep_time,
                 date_prof=prof_date, duration=str(duration), package=pkg, 
                 status=status_to_save,
-                class_count=count_label,
-                total_classes=new_total_classes_seq
+                class_count=count_label,          # Será None si es prueba
+                total_classes=new_total_classes_seq # Será None si es prueba
             )
             session.add(new_class)
             session.commit()
             
+            # Backup SQLite
             try:
                 bk_sess = BackupSession()
                 bk_sess.add(AsignedClasses(
@@ -255,7 +281,8 @@ def scheduleMaker():
                     end_time=end_int, duration=str(duration), package=pkg, 
                     status=status_to_save,
                     start_prof_time=sp_time, end_prof_time=ep_time, date_prof=prof_date,
-                    class_count=count_label, total_classes=new_total_classes_seq
+                    class_count=count_label, 
+                    total_classes=new_total_classes_seq
                 ))
                 bk_sess.commit(); bk_sess.close()
             except: pass

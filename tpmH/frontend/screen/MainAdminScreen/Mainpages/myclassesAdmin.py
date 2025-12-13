@@ -93,8 +93,8 @@ def my_classesAdmin():
     # 1. LOGICA DE DATOS
     def get_all_classes():
         """
-        Obtiene todas las clases de la BD y extrae las regiones (TimeZones) únicas 
-        para llenar el selector de filtros dinámicamente.
+        Obtiene todas las clases, finaliza automáticamente las vencidas 
+        y extrae metadatos para filtros.
         """
         session = PostgresSession()
         try:
@@ -110,40 +110,72 @@ def my_classesAdmin():
             upcoming_classes = []
             history_classes = []
             
-            unique_regions = set() # Set para guardar zonas horarias únicas encontradas
-            unique_students = set() # Set para nombres únicos
+            unique_regions = set()
+            unique_students = set()
+            
+            classes_modified = False # Flag para saber si hay que hacer commit
 
             for c in all_classes:
-                # Adjuntar TimeZone al objeto y guardarlo para el filtro
+                # 1. Adjuntar TimeZone y Datos para Filtros
                 c.student_tz = user_tz_map.get(c.username, 'UTC')
                 unique_regions.add(c.student_tz)
-
                 full_name = f"{c.name} {c.surname}".strip()
                 unique_students.add(full_name)
 
-                # Determinar tiempo de inicio (Profesor o Estudiante como fallback)
+                # 2. Determinar Fechas y Horas (Prioridad Profesor)
                 p_start = c.start_prof_time if getattr(c, 'start_prof_time', None) is not None else c.start_time
+                p_end = c.end_prof_time if getattr(c, 'end_prof_time', None) is not None else c.end_time
                 p_date = getattr(c, 'date_prof', None) or c.date
                 
-                # Crear entero de fecha+hora para ordenamiento
-                if p_date and p_start is not None:
-                    c_full_int = int(p_date.replace('-', '') + str(p_start).zfill(4))
-                else:
-                    c_full_int = 0 
+                # Crear entero de fecha+hora inicio para ordenamiento
+                c_start_int = 0
+                c_end_int = 0
 
-                # Clasificación en listas
-                if p_date == now_date_str:
-                    if c.status in FINALIZED_STATUSES:
-                        history_classes.append(c)
+                if p_date and p_start is not None:
+                    c_start_int = int(p_date.replace('-', '') + str(p_start).zfill(4))
+                    # Calculamos el tiempo de fin absoluto para saber si ya pasó
+                    if p_end:
+                         c_end_int = int(p_date.replace('-', '') + str(p_end).zfill(4))
                     else:
-                        today_classes.append(c)
-                elif c.status in FINALIZED_STATUSES:
+                        # Fallback si no hay end_time: start + duration
+                        c_end_int = c_start_int + 60 # Asumimos 1 hora si falla algo
+                
+                # ==========================================================
+                # AUTO-FINALIZACIÓN: Si la clase era Pendiente y ya pasó su hora de fin
+                # ==========================================================
+                if c_end_int > 0 and c_end_int < current_full_int and c.status in ['Pendiente', 'Prueba_Pendiente']:
+                    c.status = 'Finalizada'
+                    classes_modified = True
+                
+                # ==========================================================
+                # CLASIFICACIÓN EN LISTAS
+                # ==========================================================
+                
+                # Si está finalizada/completada/cancelada -> HISTORIAL
+                if c.status in FINALIZED_STATUSES or c.status == 'Finalizada':
                     history_classes.append(c)
-                elif c_full_int > current_full_int:
+                
+                # Si es HOY y NO está finalizada
+                elif p_date == now_date_str:
+                    today_classes.append(c)
+                
+                # Si es FUTURO
+                elif c_start_int > current_full_int:
                     upcoming_classes.append(c)
+                
+                # Cualquier otra cosa (ej. pasado pendiente que no se actualizó, o errores) -> Historial
                 else:
                     history_classes.append(c)
-            
+
+            # Si hubo cambios automáticos de estado, guardar en BD
+            if classes_modified:
+                try:
+                    session.commit()
+                    logger.info("Se han finalizado clases automáticamente por horario vencido.")
+                except Exception as e:
+                    logger.error(f"Error auto-finalizando clases: {e}")
+                    session.rollback()
+
             def sort_key_prof(x):
                 d = getattr(x, 'date_prof', None) or x.date or "9999-99-99"
                 t = x.start_prof_time if getattr(x, 'start_prof_time', None) is not None else x.start_time or 0
@@ -153,12 +185,12 @@ def my_classesAdmin():
             upcoming_classes.sort(key=sort_key_prof)
             history_classes.sort(key=sort_key_prof, reverse=True)
             
-            # Retornamos las listas clasificadas Y las regiones ordenadas
-            return today_classes, upcoming_classes, history_classes, sorted(list(unique_regions)), sorted(list(unique_students))
+            # Retornamos todo, incluyendo la lista completa raw para métricas generales
+            return today_classes, upcoming_classes, history_classes, sorted(list(unique_regions)), sorted(list(unique_students)), all_classes
             
         except Exception as e:
             logger.error(f"Error fetching admin classes: {e}")
-            return [], [], [], []
+            return [], [], [], [], [], []
         finally:
             session.close()
     
@@ -201,19 +233,20 @@ def my_classesAdmin():
             if cls:
                 cls.status = new_status
                 
-                # --- ACTUALIZACIÓN DE USER ---
+                # --- ACTUALIZACIÓN DE USER (Contadores DB) ---
                 session.flush() 
 
                 user = session.query(User).filter(User.username == cls.username).first()
                 if user:
-                    # 1. TOTAL CLASSES
+                    # 1. TOTAL CLASSES (Histórico) - NO contamos pruebas
                     finalized_count = session.query(AsignedClasses).filter(
                         AsignedClasses.username == cls.username,
-                        AsignedClasses.status.in_(['Completada', 'Cancelada', 'No Asistió', 'Finalizada'])
+                        AsignedClasses.status.in_(['Completada', 'Cancelada', 'No Asistió', 'Finalizada']),
+                        AsignedClasses.status.notlike('%Prueba%') # <--- FILTRO IMPORTANTE
                     ).count()
                     user.total_classes = finalized_count
 
-                    # 2. CLASS COUNT
+                    # 2. CLASS COUNT (Paquete Mensual) - NO contamos pruebas
                     try:
                         c_date_obj = datetime.strptime(cls.date, '%Y-%m-%d')
                         month_prefix = c_date_obj.strftime('%Y-%m')
@@ -223,7 +256,8 @@ def my_classesAdmin():
                     month_consumed = session.query(AsignedClasses).filter(
                         AsignedClasses.username == cls.username,
                         AsignedClasses.date.startswith(month_prefix),
-                        AsignedClasses.status.in_(CONSUMED_STATUSES)
+                        AsignedClasses.status.in_(CONSUMED_STATUSES),
+                        AsignedClasses.status.notlike('%Prueba%') # <--- FILTRO IMPORTANTE
                     ).count()
 
                     pkg_limit = PACKAGE_LIMITS.get(user.package, 0)
@@ -233,7 +267,7 @@ def my_classesAdmin():
 
                 session.commit()
                 
-                # Backup SQLite
+                # Backup SQLite (Misma lógica)
                 try:
                     bk_sess = BackupSession()
                     bk_cls = bk_sess.query(AsignedClasses).filter(
@@ -245,6 +279,7 @@ def my_classesAdmin():
                     if bk_cls:
                         bk_cls.status = new_status
                     else:
+                        # Si no existe, lo creamos (manteniendo lógica de nulos si es prueba)
                         bk_sess.add(AsignedClasses(
                             username=cls.username, name=cls.name, surname=cls.surname,
                             date=cls.date, days=cls.days, start_time=cls.start_time,
@@ -724,83 +759,91 @@ def my_classesAdmin():
 
     @ui.refreshable
     def render_content():
-        # 1. Obtener Datos (Crudos + Regiones disponibles)
-        today_raw, upcoming_raw, history_raw, available_regions, available_students = get_all_classes()
+        # 1. Obtener Datos
+        # Nota: Agregamos 'all_classes_raw' al retorno de get_all_classes
+        today_raw, upcoming_raw, history_raw, available_regions, available_students, all_classes_raw = get_all_classes()
         
-        # 2. Filtrar Datos
-        # Aplicamos la función filter_list a cada conjunto de datos
+        # 2. Filtrar Datos (Para las listas visuales)
         filtered_today = filter_list(today_raw)
         filtered_upcoming = filter_list(upcoming_raw)
         filtered_history = filter_list(history_raw)
 
-        # 3. Calcular Estadísticas (Basadas en lo que se ve en pantalla)
-        today_pending = sum(1 for c in filtered_today if 'Pendiente' in c.status)
-        today_done = sum(1 for c in filtered_today if c.status == 'Completada')
+        # 3. CÁLCULO DE KPIs
+        
+        # --- A. Métricas Generales (Todo el historial de la BD) ---
+        gen_total = len(all_classes_raw)
+        gen_pending = sum(1 for c in all_classes_raw if c.status in ['Pendiente', 'Prueba_Pendiente'])
+        gen_completed = sum(1 for c in all_classes_raw if c.status == 'Completada') # Solo 'Completada' estricto
+        
+        # --- B. Métricas de Hoy (Solo clases con fecha de hoy) ---
+        # Usamos today_raw (antes de filtros de UI) y history_raw para buscar clases de HOY que ya pasaron
+        now_str = datetime.now().strftime('%Y-%m-%d')
+        
+        # Juntamos listas para analizar todo lo que tenga fecha de hoy
+        all_today_candidates = today_raw + [c for c in history_raw if (getattr(c, 'date_prof', None) or c.date) == now_str]
+        
+        day_total = len(all_today_candidates)
+        day_pending = sum(1 for c in all_today_candidates if c.status in ['Pendiente', 'Prueba_Pendiente'])
+        day_completed = sum(1 for c in all_today_candidates if c.status == 'Completada')
 
         with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-6'):
             
             # HEADER
             with ui.row().classes('w-full justify-between items-center py-4 border-b border-slate-100'):
-                
-                # --- SECCIÓN IZQUIERDA: TÍTULO E ICONO ---
                 with ui.row().classes('items-center gap-3'):
                     with ui.element('div').classes('p-2 bg-pink-50 rounded-lg flex items-center justify-center'):
                         ui.icon('local_library', size='md', color='pink-600')
-                    
                     with ui.column().classes('gap-0'):
                         ui.label('Gestión de Clases').classes('text-xl font-bold text-slate-800 tracking-tight')
-                        with ui.row().classes('items-center gap-1.5'):
-                            ui.icon('public', size='xs').classes('text-slate-400')
-                            ui.label('Zona horaria local detectada').classes('text-xs text-slate-500 font-medium')
+                        ui.label('Panel de Administración').classes('text-xs text-slate-500 font-medium')
 
-                # --- SECCIÓN DERECHA: ACCIONES ---
                 with ui.row().classes('items-center gap-3'):
                     ui.button('Sincronizar', on_click=run_sync, icon='sync_alt') \
-                        .props('flat no-caps') \
-                        .classes('text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 rounded-full px-5 py-2 text-sm font-semibold transition-all duration-300 shadow-sm') \
-                        .tooltip('Importar desde Google Calendar')
+                        .props('flat no-caps').classes('text-slate-700 bg-white border border-slate-200 rounded-full px-5 py-2 text-sm font-semibold shadow-sm')
+                    ui.button(icon='refresh', on_click=refresh_ui).props('flat round dense').classes('text-slate-400 hover:text-slate-700')
 
-                    ui.button(icon='refresh', on_click=refresh_ui) \
-                        .props('flat round dense') \
-                        .classes('text-slate-400 hover:text-slate-700 hover:rotate-180 transition-all duration-500') \
-                        .tooltip('Actualizar vista')
-            
-            # --- BARRA DE FILTROS ---
-            with ui.card().classes('w-full p-4 rounded-xl bg-white border border-slate-100 shadow-sm'):
-                with ui.row().classes('w-full items-center gap-4 flex-wrap'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('filter_list', color='slate-400')
-                        ui.label('Filtros:').classes('font-bold text-slate-600 mr-2')
+            # --- SECCIÓN DE KPIs (TABS) ---
+            with ui.card().classes('w-full p-0 rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden'):
+                # Header de Tabs
+                with ui.tabs().classes('w-full text-slate-600 bg-slate-50 border-b border-slate-100') as tabs:
+                    t_day = ui.tab('Métricas Hoy').classes('flex-1')
+                    t_gen = ui.tab('Métricas Generales').classes('flex-1')
+
+                # Paneles
+                with ui.tab_panels(tabs, value=t_day).classes('w-full p-4 bg-white'):
                     
-                   # 1. SELECT ESTUDIANTE (Antes Input, ahora Select con buscador)
-                    # use_input=True habilita escritura para buscar en la lista
+                    # PANEL 1: MÉTRICAS DE HOY
+                    with ui.tab_panel(t_day).classes('p-0'):
+                        with ui.row().classes('w-full gap-4 flex-nowrap'):
+                            render_stat_card('Total Hoy', day_total, 'blue')
+                            render_stat_card('Pendientes Hoy', day_pending, 'orange')
+                            render_stat_card('Completadas Hoy', day_completed, 'green')
+                    
+                    # PANEL 2: MÉTRICAS GENERALES
+                    with ui.tab_panel(t_gen).classes('p-0'):
+                        with ui.row().classes('w-full gap-4 flex-nowrap'):
+                            render_stat_card('Total Histórico', gen_total, 'indigo')
+                            render_stat_card('Total Pendientes', gen_pending, 'orange')
+                            render_stat_card('Total Completadas', gen_completed, 'green')
+
+            # --- FILTROS ---
+            with ui.card().classes('w-full p-4 rounded-xl bg-white border border-slate-100 shadow-sm mt-2'):
+                with ui.row().classes('w-full items-center gap-4 flex-wrap'):
+                    ui.icon('filter_list', color='slate-400')
+                    
                     stud_opts = ['Todos'] + available_students
                     ui.select(options=stud_opts, value=filters['student'] or 'Todos', label='Estudiante', with_input=True) \
-                        .bind_value(filters, 'student') \
-                        .on('update:model-value', refresh_ui) \
-                        .props('outlined dense options-dense behavior="menu"').classes('flex-1 min-w-[200px]')
+                        .bind_value(filters, 'student').on('update:model-value', refresh_ui).classes('flex-1 min-w-[200px]')
                     
-                    # 2. Región (Dinámico)
                     region_opts = ['Todas'] + available_regions
                     ui.select(options=region_opts, value=filters['region'] or 'Todas', label='Región') \
-                        .bind_value(filters, 'region') \
-                        .on('update:model-value', refresh_ui) \
-                        .props('outlined dense options-dense behavior="menu"').classes('w-48')
+                        .bind_value(filters, 'region').on('update:model-value', refresh_ui).classes('w-48')
                     
-                    # 3. Momento del Día
                     time_opts = ['Todos', 'Mañana', 'Tarde', 'Noche']
                     ui.select(options=time_opts, value=filters['time_of_day'] or 'Todos', label='Horario') \
-                        .bind_value(filters, 'time_of_day') \
-                        .on('update:model-value', refresh_ui) \
-                        .props('outlined dense options-dense behavior="menu"').classes('w-40')
+                        .bind_value(filters, 'time_of_day').on('update:model-value', refresh_ui).classes('w-40')
 
-            # STATS
-            with ui.row().classes('w-full gap-4 flex-wrap'):
-                render_stat_card('Clases Hoy (Filtro)', len(filtered_today), 'blue')
-                render_stat_card('Pendientes Hoy', today_pending, 'orange')
-                render_stat_card('Completadas Hoy', today_done, 'green')
-
-            # SECCIONES (Usando listas FILTRADAS)
+            # --- LISTAS DE CLASES ---
             if filtered_today:
                 with ui.column().classes('w-full gap-3 mt-4'):
                     with ui.row().classes('items-center gap-2'):
@@ -808,8 +851,7 @@ def my_classesAdmin():
                         ui.label('Agenda de Hoy').classes('text-lg font-bold text-slate-800')
                     for c in filtered_today:
                         render_admin_class_card(c)
-            # Solo mostrar mensaje si NO hay filtros activos y la lista original está vacía, o si hay filtros y no hay resultados
-            elif not filters['student'] and not filters['region'] and not filters['time_of_day']: 
+            elif not any(filters.values()): 
                 ui.label('No hay clases pendientes para hoy.').classes('text-slate-400 italic mt-4')
 
             ui.separator().classes('bg-slate-200 my-2')
@@ -817,23 +859,16 @@ def my_classesAdmin():
             with ui.expansion('Próximas Sesiones', icon='calendar_month', value=True).classes('w-full bg-white border border-slate-100 rounded-xl shadow-sm'):
                 with ui.column().classes('w-full p-4 gap-3'):
                     if not filtered_upcoming:
-                        ui.label('No hay clases futuras encontradas con este filtro.').classes('text-slate-400 italic')
+                        ui.label('No hay clases futuras.').classes('text-slate-400 italic')
                     for c in filtered_upcoming:
                         render_admin_class_card(c)
 
             with ui.expansion('Historial', icon='history').classes('w-full bg-slate-50 border border-slate-100 rounded-xl'):
                 with ui.column().classes('w-full p-4 gap-3'):
                     if not filtered_history:
-                        ui.label('Historial vacío o sin coincidencias.').classes('text-slate-400 italic')
+                        ui.label('Historial vacío.').classes('text-slate-400 italic')
                     for c in filtered_history:
                         render_admin_class_card(c, is_history=True)
-
-            # EMPTY STATE GLOBAL (Si todo está vacío por filtros)
-            if not filtered_today and not filtered_upcoming and not filtered_history:
-                 with ui.column().classes('w-full items-center py-12 opacity-50'):
-                    ui.icon('search_off', size='4xl', color='slate-300')
-                    ui.label('No se encontraron clases con estos filtros').classes('text-slate-400 font-medium')
-
     def refresh_ui():
         render_content.refresh()
 
