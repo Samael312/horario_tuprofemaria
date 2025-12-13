@@ -478,15 +478,15 @@ def render_landing_page():
                             ui.label(t['footer_nav']).classes('font-bold text-white mb-2 tracking-wide text-sm uppercase')
                             for lbl, lnk in [(t['footer_home'], '#'), (t['nav_plans'], '#plans')]:
                                 ui.link(lbl, lnk).classes('text-slate-400 hover:text-rose-400 transition-colors no-underline text-sm')
-                            ui.label(t['footer_lang']).classes('font-bold text-white text-sm uppercase mt-4 mb-2 tracking-wide')
-                            with ui.button(icon='language', color='slate-800').props('flat dense').classes('text-slate-400 hover:text-white'):
-                                with ui.menu().classes('bg-slate-800 border border-slate-700'):
-                                    with ui.menu_item(on_click=lambda: trigger_lang_change('es')).classes('gap-3 hover:bg-slate-700'):
-                                        ui.image('/static/icon/espana.png').classes('w-5 h-5')
-                                        ui.label('Español').classes('text-slate-200')
-                                    with ui.menu_item(on_click=lambda: trigger_lang_change('en')).classes('gap-3 hover:bg-slate-700'):
-                                        ui.image('/static/icon/usa.png').classes('w-5 h-5')
-                                        ui.label('English').classes('text-slate-200')
+                            #ui.label(t['footer_lang']).classes('font-bold text-white text-sm uppercase mt-4 mb-2 tracking-wide')
+                            #with ui.button(icon='language', color='slate-800').props('flat dense').classes('text-slate-400 hover:text-white'):
+                            #    with ui.menu().classes('bg-slate-800 border border-slate-700'):
+                            #        with ui.menu_item(on_click=lambda: trigger_lang_change('es')).classes('gap-3 hover:bg-slate-700'):
+                            #            ui.image('/static/icon/espana.png').classes('w-5 h-5')
+                            #            ui.label('Español').classes('text-slate-200')
+                            #        with ui.menu_item(on_click=lambda: trigger_lang_change('en')).classes('gap-3 hover:bg-slate-700'):
+                            #            ui.image('/static/icon/usa.png').classes('w-5 h-5')
+                            #            ui.label('English').classes('text-slate-200')
                         with ui.column().classes('gap-4'):
                             ui.label(t['footer_contact']).classes('font-bold text-white mb-2 tracking-wide text-sm uppercase')
                             with ui.row().classes('items-center gap-2 text-slate-400'):
