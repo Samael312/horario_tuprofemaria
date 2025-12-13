@@ -1,31 +1,30 @@
-from nicegui import ui, app, Client  # <--- IMPORTANTE: Agrega Client aquí
+from nicegui import ui, app, Client 
 import asyncio
 import os
 import time
+
+# Asegúrate de que estas rutas sean correctas en tu proyecto
 from components.headerAdmin import create_admin_screen
-
-# Importamos la lógica de sincronización
 from auth.sync_cal import sync_google_calendar_logic
-
 
 # --- VARIABLES GLOBALES DE CONTROL ---
 IS_SYNCING = False
 LAST_SYNC_TIME = 0  
-SYNC_COOLDOWN = 3600 
+SYNC_COOLDOWN = 3600  # 1 hora de espera entre auto-syncs
 
-# --- FUNCIÓN HELPER CORREGIDA ---
+# --- FUNCIÓN HELPER NOTIFICACIONES ---
 async def notify_all_admins(message, type='positive', spinner=False):
     """Envía notificaciones a todas las pestañas abiertas por administradores."""
-    # CORRECCIÓN: Usamos Client.instances.values() en lugar de app.clients
+    # Iteramos sobre todos los clientes conectados
     for client in Client.instances.values():
         try:
-            # Entramos en el contexto del cliente para acceder a su sesión (storage)
+            # Entramos en el contexto del cliente
             with client:
-                # Verificamos si es un usuario autenticado y es admin
+                # Verificamos si es admin
                 if app.storage.user.get('authenticated') and app.storage.user.get('role') == 'admin':
                     ui.notify(message, type=type, close_button=True, position='bottom-right', spinner=spinner)
         except Exception:
-            # Si el cliente está desconectado o hay error al acceder, ignoramos
+            # Cliente desconectado o error de contexto
             pass
 
 @ui.page('/admin')
@@ -44,24 +43,22 @@ def main_admin_screen():
         return
 
     # =================================================================
-    # 2. SINCRONIZACIÓN CONTROLADA (COOLDOWN + GLOBAL)
+    # 2. SINCRONIZACIÓN CONTROLADA
     # =================================================================
     async def run_auto_sync():
         global IS_SYNCING, LAST_SYNC_TIME
         
-        # A. Si ya está corriendo, avisamos y salimos.
+        # A. Evitar concurrencia
         if IS_SYNCING:
-            ui.notify('⚠️ La sincronización ya está en curso en segundo plano.', type='warning', position='bottom-right')
+            # Silencioso: no molestamos si ya está corriendo
             return
 
-        # B. COOLDOWN: Si hace poco se sincronizó, no hacemos nada automáticamente.
-        # Esto evita el reinicio al cambiar de pestaña.
+        # B. COOLDOWN
         current_time = time.time()
         time_since_last = current_time - LAST_SYNC_TIME
         
         if time_since_last < SYNC_COOLDOWN:
-            # Opcional: Imprimir en consola para depuración
-            print(f"Sync omitido: Solo han pasado {int(time_since_last)} segs. Espera {SYNC_COOLDOWN}s.")
+            print(f"Sync omitido: Faltan {int(SYNC_COOLDOWN - time_since_last)}s para el próximo ciclo.")
             return
 
         teacher_email = os.getenv('CALENDAR_ID')
@@ -71,22 +68,27 @@ def main_admin_screen():
         # C. INICIO DEL PROCESO
         IS_SYNCING = True
         
-        # Avisamos a TODOS que empezó (No guardamos la variable para no tener que hacer dismiss)
+        # Notificamos inicio
         await notify_all_admins('🔄 Iniciando sincronización con Google Calendar...', type='info', spinner=True)
 
         try:
-            # --- PROCESO PESADO ---
-            # El hilo sigue vivo aunque cierres la pestaña
-            count = await asyncio.to_thread(sync_google_calendar_logic, teacher_email)
+            # --- PROCESO ---
+            # result_data es ahora un DICCIONARIO
+            result_data = await asyncio.to_thread(sync_google_calendar_logic, teacher_email)
             
-            # Actualizamos el tiempo de la última sincronización exitosa
             LAST_SYNC_TIME = time.time()
 
+            # --- EXTRACCIÓN DE DATOS DEL DICCIONARIO ---
+            new_count = result_data.get('new_count', 0)
+            updated_count = result_data.get('updated_count', 0)
+            msg_text = result_data.get('msg', 'Sincronización completada')
+
             # --- NOTIFICACIÓN FINAL ---
-            if count > 0:
-                await notify_all_admins(f'✅ Listo: {count} clases importadas.', type='positive')
+            if new_count > 0 or updated_count > 0:
+                # Mostramos el mensaje detallado que viene del servidor
+                await notify_all_admins(f'✅ {msg_text}', type='positive')
             else:
-                await notify_all_admins('✅ Calendario sincronizado (Sin cambios).', type='positive')
+                await notify_all_admins('✅ Calendario verificado (Sin cambios nuevos).', type='positive')
 
         except Exception as e:
             print(f"Error crítico en Auto-Sync: {e}")
@@ -95,8 +97,9 @@ def main_admin_screen():
         finally:
             IS_SYNCING = False
 
-    # Iniciamos el proceso (Solo se ejecutará si pasa el filtro de Cooldown)
-    ui.timer(0.5, run_auto_sync, once=True)
+    # Iniciamos el timer (se ejecutará una vez al cargar la página)
+    # Si quieres que sea repetitivo, quita 'once=True' y ajusta el tiempo
+    ui.timer(1.0, run_auto_sync, once=True)
 
     # =================================================================
     # 3. INTERFAZ GRÁFICA

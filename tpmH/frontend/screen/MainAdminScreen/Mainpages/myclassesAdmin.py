@@ -54,40 +54,40 @@ def my_classesAdmin():
     }
 
     # ==============================================================================
-    # 1. FUNCIÓN MANEJADORA DEL BOTÓN (UI)
+    # 1. FUNCIÓN DE SINCRONIZACIÓN (MODIFICADA)
     # ==============================================================================
     async def run_sync():
         """
-        Llama a la lógica de sync_cal.py en un hilo separado
-        para no congelar la interfaz gráfica.
+        Maneja la sincronización manual recibiendo ahora un diccionario.
         """
         notification = ui.notification(timeout=None)
         notification.message = 'Sincronizando Google Calendar...'
         notification.spinner = True
         
         try:
-            # Obtenemos email de variable de entorno
             teacher_email = os.getenv('CALENDAR_ID')
             if not teacher_email:
                 notification.dismiss()
-                ui.notify('Error: Falta configurar CALENDAR_ID en las variables de entorno de Render', type='negative')
+                ui.notify('Error: Falta CALENDAR_ID en .env', type='negative')
                 return
 
-            # Ejecutar la función pesada (sync_google_calendar_logic) en un hilo aparte
-            # Esto es vital en NiceGUI para mantener la app fluida
-            count = await asyncio.to_thread(sync_google_calendar_logic, teacher_email)
+            # Llamamos a la lógica en un hilo aparte
+            result_data = await asyncio.to_thread(sync_google_calendar_logic, teacher_email)
             
             notification.dismiss()
             
-            if count > 0:
-                ui.notify(f'¡Éxito! Se importaron {count} clases nuevas.', type='positive')
-                refresh_ui() # Recargar la tabla automáticamente
+            # Accedemos a la clave 'msg' para mostrar el texto al usuario
+            ui.notify(result_data['msg'], type='positive', icon='cloud_sync', close_button=True)
+            
+            # Refrescamos la UI si hubo cambios
+            if result_data['new_count'] > 0 or result_data['updated_count'] > 0:
+                refresh_ui()
             else:
-                ui.notify('Sincronización completada. No se encontraron clases nuevas.', type='info')
+                # Opcional: refrescar siempre por si acaso
+                refresh_ui()
                 
         except Exception as e:
             notification.dismiss()
-            logger.error(f"Sync Error: {e}")
             ui.notify(f'Error al sincronizar: {str(e)}', type='negative')
     
     # 1. LOGICA DE DATOS
