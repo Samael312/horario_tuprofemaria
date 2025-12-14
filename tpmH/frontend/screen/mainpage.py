@@ -158,6 +158,28 @@ def render_landing_page():
             .mask-fade {
                 mask-image: linear-gradient(to right, transparent 0, black 128px, black calc(100% - 128px), transparent 100%);
                 -webkit-mask-image: linear-gradient(to right, transparent 0, black 128px, black calc(100% - 128px), transparent 100%);
+            
+            /* Ocultar barra de scroll pero permitir funcionalidad */
+            .hide-scrollbar::-webkit-scrollbar {
+                display: none;
+            }
+            .hide-scrollbar {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+                cursor: grab; /* Cursor de mano abierta por defecto */
+            }
+            
+            /* Clase que se activa vía JS al hacer click */
+            .hide-scrollbar.active {
+                cursor: grabbing; /* Cursor de mano cerrada agarrando */
+                cursor: -webkit-grabbing;
+            }
+
+            /* Evitar selección de texto al arrastrar */
+            .no-select {
+                user-select: none;
+                -webkit-user-select: none;
+            }
             }
         </style>
         
@@ -332,94 +354,166 @@ def render_landing_page():
                 # No hacemos nada más aquí, dejaremos que el bloque 'if not reviews_list' ponga los datos de ejemplo si falló
 
             # 2. LOGICA DE DESPLAZAMIENTO INFINITO
-            # Si hay pocas reviews (menos de 6), duplicamos la lista varias veces para llenar la pantalla
-            # y que la animación se vea fluida.
-            if len(reviews_list) < 6:
-                infinite_reviews = reviews_list * 4
-            else:
-                infinite_reviews = reviews_list * 2
+        # --- REVIEWS / TESTIMONIOS (CORREGIDO) ---
+        with ui.element('section').classes('w-full py-20 bg-slate-50 overflow-hidden relative border-y border-slate-200'):
+            
+            # 1. OBTENER DATOS DE LA BD
+            reviews_list = []
+            try:
+                with PostgresSession() as session:
+                    profiles = session.query(TeacherProfile).all()
+                    for profile in profiles:
+                        if profile.reviews and isinstance(profile.reviews, list):
+                            reviews_list.extend(profile.reviews)
+            except Exception as e:
+                print(f"Error conectando a la BD o extrayendo reviews: {e}")
+
+            # 2. LOGICA DE DUPLICADO PARA SCROLL INFINITO
+            # Duplicamos varias veces para asegurar que haya suficiente contenido para el scroll
+            if not reviews_list:
+                reviews_list = [{'name': 'Maria', 'comment': 'Excellent teacher!', 'rating': 5}]
+            
+            # Multiplicamos por 20 para tener suficiente contenido para el buffer
+            # Esto crea: [A, B, C, ... A, B, C ...] muchas veces.
+            infinite_reviews = reviews_list * 20
 
             # 3. RENDERIZADO UI
             with ui.column().classes('max-w-7xl mx-auto px-6 mb-12 text-center z-10 relative'):
                 ui.label(t.get('reviews_tag', 'Reviews')).classes('text-rose-600 font-bold tracking-widest uppercase text-sm')
                 ui.label(t.get('reviews_title', 'Historias de Éxito')).classes('text-4xl font-bold text-slate-900')
-
                 ui.label(t.get('reviews_subtitle', 'Personas reales, resultados reales.')).classes('text-slate-500 text-lg')
 
             # Contenedor con máscara de desvanecimiento
-            with ui.element('div').classes('w-full overflow-hidden mask-fade'):
+            with ui.element('div').classes('w-full overflow-hidden mask-fade relative'):
                 
-                # Tira animada (animate-scroll)
-                # IMPORTANTE: Asegúrate de tener definidos @keyframes scroll y .animate-scroll en tu CSS
-                with ui.element('div').classes('animate-scroll gap-6 py-4 flex flex-nowrap'):
+                # CONTENEDOR DEL SLIDER (Con ID 'reviews-container' y clases corregidas)
+                with ui.row().classes('gap-6 py-4 flex-nowrap overflow-x-auto hide-scrollbar w-full items-stretch no-select') as scroll_container:
+                    scroll_container.props('id=reviews-container')
                     
                     for review in infinite_reviews:
-                        # --- CORRECCIONES AQUI ---
-                        
-                        # 1. Nombre: Concatenamos Nombre y Apellido
                         first_name = review.get('name', '')
                         last_name = review.get('surname', '')
                         full_name = f"{first_name} {last_name}".strip()
-                        
-                        # Si por alguna razón vienen vacíos, usamos el username
                         r_name = full_name if full_name else review.get('username', 'Estudiante')
-
-                        # 2. Comentario: Cambiamos 'text' por 'comment'
                         r_text = review.get('comment', 'Sin comentarios.')
-
-                        r_time = review.get('time_zone', 'Mundo')
-                        r_total = review.get('total_classes', "0")
+                        r_time = review.get('time_zone', '')
+                        r_total = review.get('total_classes', "")
                         
-                        # 3. Estrellas: Cambiamos 'stars' por 'rating'
                         try:
                             r_stars = int(review.get('rating', 5))
                         except:
                             r_stars = 5
-                            
-                        # El campo 'country' no viene en tu JSON, así que podemos usar la fecha u omitirlo
                         r_date = review.get('date', '') 
 
-                        # --- RENDERIZADO DE LA TARJETA ---
-                        with ui.card().classes('w-[350px] shrink-0 p-6 rounded-2xl bg-white border border-slate-100 shadow-lg shadow-slate-200/50 flex flex-col gap-4 hover:scale-105 transition-transform duration-300'):
-                            
-                            # Header Tarjeta
+                        # TARJETA
+                        # Usamos pointer-events-none en los hijos para que no interfieran con el arrastre del padre
+                        with ui.card().classes('w-[350px] shrink-0 p-6 rounded-2xl bg-white border border-slate-100 shadow-lg shadow-slate-200/50 flex flex-col gap-4 select-none'): 
                             with ui.row().classes('items-center gap-3 w-full'):
-                                # Avatar con iniciales (Mejorado para tomar inicial de nombre y apellido)
-                                if first_name and last_name:
-                                    initial = (first_name[0] + last_name[0]).upper()
-                                else:
-                                    initial = r_name[:2].upper()
-                                
-                                
+                                initial = (r_name[:2].upper())
                                 with ui.element('div').classes('w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 font-bold text-sm shadow-sm'):
                                     ui.label(initial)
                                 
                                 with ui.column().classes('gap-0'):
-                                    # NUEVA FILA para el nombre y los labels de tiempo/total
                                     with ui.row().classes('gap-2 items-center'):
                                         ui.label(r_name).classes('font-bold text-slate-800 text-sm')
-                                        
-                                        # MOVEMOS r_time aquí, al lado del nombre
-                                        if r_time:
-                                            ui.label(r_time).classes('text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold shadow-xs')
-                                            
-                                        # MOVEMOS r_total aquí, al lado de r_time
                                         if r_total:
-                                            ui.label(f'Clases: {r_total}').classes('text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold shadow-xs')
-                                            
-                                    # Mostramos la fecha en lugar del país, ya que el país no viene en el JSON
+                                            ui.label(f'{r_total} clases').classes('text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold')
                                     if r_date:
                                         ui.label(r_date).classes('text-xs text-slate-400')
-                                        
                                 
-                                # Estrellas
                                 with ui.row().classes('ml-auto gap-0'):
                                     for _ in range(r_stars):
                                         ui.icon('star', color='amber-400', size='xs')
 
-                            # Texto del comentario
                             ui.icon('format_quote', color='rose-100', size='md').classes('mb-[-15px]')
                             ui.label(r_text).classes('text-slate-600 text-sm italic leading-relaxed line-clamp-4')
+
+            # --- SCRIPT JAVASCRIPT CORREGIDO (SEAMLESS LOOP) ---
+            ui.add_body_html('''
+            <script>
+                document.addEventListener('DOMContentLoaded', () => {
+                    function initReviewsSlider() {
+                        const slider = document.getElementById('reviews-container');
+                        
+                        // Si NiceGUI aún no renderizó el elemento, reintentar.
+                        if (!slider) {
+                            setTimeout(initReviewsSlider, 50);
+                            return;
+                        }
+
+                        let isDown = false;
+                        let isHovered = false;
+                        let startX;
+                        let scrollLeft;
+                        let animationId;
+                        
+                        // Velocidad del scroll (ajusta si lo quieres más rápido/lento)
+                        const speed = 0.8; 
+
+                        // 1. EVENTOS RATÓN (DRAG)
+                        slider.addEventListener('mousedown', (e) => {
+                            isDown = true;
+                            slider.classList.add('active');
+                            startX = e.pageX - slider.offsetLeft;
+                            scrollLeft = slider.scrollLeft;
+                            cancelAnimationFrame(animationId);
+                        });
+
+                        slider.addEventListener('mouseleave', () => {
+                            isDown = false;
+                            isHovered = false;
+                            slider.classList.remove('active');
+                            requestAnimationFrame(autoPlay);
+                        });
+
+                        slider.addEventListener('mouseup', () => {
+                            isDown = false;
+                            slider.classList.remove('active');
+                        });
+
+                        slider.addEventListener('mousemove', (e) => {
+                            if (!isDown) return;
+                            e.preventDefault();
+                            const x = e.pageX - slider.offsetLeft;
+                            const walk = (x - startX) * 2; 
+                            slider.scrollLeft = scrollLeft - walk;
+                        });
+
+                        // 2. PAUSAR EN HOVER
+                        slider.addEventListener('mouseenter', () => {
+                            isHovered = true;
+                        });
+
+                        // 3. LÓGICA DE LOOP INFINITO PERFECTO
+                        function autoPlay() {
+                            if (!isDown && !isHovered) {
+                                slider.scrollLeft += speed;
+                            }
+
+                            // TRUCO MATEMÁTICO:
+                            // Si hemos scrolleado más de la mitad del ancho total del contenido...
+                            // Restamos exactamente la mitad.
+                            // Al ser la lista un espejo (A+A), saltar de la mitad al inicio es invisible.
+                            if (slider.scrollLeft >= (slider.scrollWidth / 2)) {
+                                slider.scrollLeft -= (slider.scrollWidth / 2);
+                            } 
+                            
+                            // Protección para scroll hacia atrás (si el usuario arrastra a la izquierda)
+                            if (slider.scrollLeft <= 0) {
+                                slider.scrollLeft += (slider.scrollWidth / 2);
+                            }
+
+                            animationId = requestAnimationFrame(autoPlay);
+                        }
+
+                        // Iniciar
+                        animationId = requestAnimationFrame(autoPlay);
+                    }
+
+                    initReviewsSlider();
+                });
+            </script>
+            ''')
         # --- PLANS ---
         with ui.element('section').classes('w-full py-32 bg-slate-50 relative') as plans_sec:
             plans_sec.props('id=plans')
