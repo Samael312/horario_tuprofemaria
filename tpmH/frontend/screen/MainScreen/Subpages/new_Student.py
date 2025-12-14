@@ -30,6 +30,30 @@ def new_student():
 
     create_main_screen()
 
+
+    # --- Diálogo 1: Configuración de Horas ---
+    with ui.dialog() as tuto_dialog_1, ui.card().classes('w-full max-w-sm p-0 rounded-2xl shadow-2xl border border-gray-100'):
+    
+        # Imagen/Gradiente decorativo superior
+        with ui.column().classes('w-full bg-gradient-to-br from-rose-400 to-rose-600 p-8 items-center relative overflow-hidden'):
+            # Decoración de fondo (círculos sutiles)
+            ui.element('div').classes('absolute top-0 right-0 w-24 h-24 bg-white opacity-10 rounded-full -mr-10 -mt-10')
+            ui.icon('menu_book', size='3.5em', color='white').classes('drop-shadow-md')
+            ui.label('Guía Inicial').classes('text-white text-lg font-bold mt-3 tracking-wide')
+
+        # Contenido
+        with ui.column().classes('p-8 items-center text-center gap-4'):
+            ui.label('En esta pantalla configurarás tus horas preferenciales, confirmarás tu paquete y definirás tu duración ideal.').classes('text-gray-600 leading-7 text-sm')
+            
+            ui.separator().classes('w-1/2 opacity-50')
+            
+            # Botón con estilo "Outline" moderno
+            ui.button('Continuar', on_click=tuto_dialog_1.close) \
+                .props('outline rounded') \
+                .classes('text-rose-600 border-rose-200 hover:bg-rose-50 w-full font-semibold')
+    
+    ui.timer(0.5, tuto_dialog_1.open, once=True)
+
     # Contenedor Principal
     with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-6'):
         

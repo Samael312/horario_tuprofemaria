@@ -62,41 +62,38 @@ def mainscreen():
 
     # --- DIÁLOGO DE RECORDATORIO DE PAGO ---
     # Se define aquí y se abrirá automáticamente con un timer al final
-    with ui.dialog() as payment_dialog, ui.card().classes('w-full max-w-sm p-0 rounded-2xl overflow-hidden shadow-2xl'):
+    with ui.dialog() as payment_dialog, ui.card().classes('w-full max-w-sm p-0 rounded-2xl overflow-hidden shadow-2xl border border-gray-100'):
         
-        # Cabecera del diálogo
-        with ui.column().classes('w-full bg-rose-500 p-6 items-center'):
-            ui.icon('payments', size='3em', color='white')
-            ui.label('Paso Importante').classes('text-white text-xl font-bold mt-2')
-
-        # Cuerpo del mensaje
-        with ui.column().classes('p-6 items-center text-center gap-4'):
-            ui.label('Antes de terminar de configurar tu perfil, ponte en contacto con tu profesora para concretar el pago de tus clases.').classes('text-gray-600 leading-relaxed')
+        # --- Cabecera con Gradiente y Decoración ---
+        with ui.column().classes('w-full bg-gradient-to-br from-rose-400 to-rose-600 p-8 items-center relative overflow-hidden'):
+            # Círculo decorativo sutil en la esquina
+            ui.element('div').classes('absolute top-0 right-0 w-24 h-24 bg-white opacity-10 rounded-full -mr-10 -mt-10')
             
-            ui.separator()
-            
-            ui.label('Haz click aquí para contactar:').classes('text-xs font-bold text-gray-400 uppercase tracking-wider')
+            ui.icon('payments', size='3.5em', color='white').classes('drop-shadow-md')
+            ui.label('Paso Importante').classes('text-white text-lg font-bold mt-3 tracking-wide drop-shadow-sm')
 
-            # --- LÓGICA DEL BOTÓN ---
-            # 1. Limpiamos el numero extraido de la DB (quitamos espacios, guiones, etc)
+        # --- Cuerpo del mensaje ---
+        with ui.column().classes('p-8 items-center text-center gap-4'):
+            ui.label('Antes de terminar de configurar tu perfil, ponte en contacto con tu profesora para concretar el pago de tus clases.').classes('text-gray-600 leading-7 text-sm')
+            
+            ui.separator().classes('w-1/2 opacity-50 my-2')
+            
+            # --- LÓGICA DEL BOTÓN (Mantenida igual) ---
             clean_phone = ''.join(filter(str.isdigit, teacher_phone))
-            
-            # 2. Si hay numero, armamos la URL de WhatsApp, sino un fallback
-            if clean_phone:
-                wa_url = f"https://wa.me/{clean_phone}"
-            else:
-                # Fallback por si la DB está vacía o hay error
-                wa_url = "https://wa.me/" 
+            wa_url = f"https://wa.me/{clean_phone}" if clean_phone else "https://wa.me/"
 
-            # 3. Botón usando el helper open_social_link
+            # --- BOTONES DE ACCIÓN ---
+            ui.label('Haz click para contactar:').classes('text-xs font-bold text-gray-400 uppercase tracking-wider')
+
+            # 1. Botón Principal (WhatsApp) - Destacado
             ui.button('Contactar Profesora', icon='chat', on_click=lambda: open_social_link(wa_url)) \
                 .props('rounded unelevated icon-right=open_in_new') \
-                .classes('bg-rose-500 text-white w-full py-2 shadow-lg hover:bg-rose-600 transition-colors')
+                .classes('bg-rose-500 text-white w-full py-2 shadow-lg hover:bg-rose-600 hover:shadow-xl transition-all duration-300 font-bold')
 
-            # Botón para cerrar
+            # 2. Botón Secundario (Cerrar) - Estilo Outline sutil
             ui.button('Entendido, continuar', on_click=payment_dialog.close) \
-                .props('flat text-color=grey') \
-                .classes('text-sm')
+                .props('outline rounded') \
+                .classes('text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700 w-full font-semibold text-sm')
 
     # --- CONTENEDOR PRINCIPAL ---
     with ui.column().classes('w-full min-h-[calc(100vh-64px)] bg-gray-50 items-center justify-center p-4'):
