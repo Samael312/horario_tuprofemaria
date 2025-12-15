@@ -448,7 +448,7 @@ def render_landing_page():
                         let animationId;
                         
                         // Velocidad del scroll (ajusta si lo quieres más rápido/lento)
-                        const speed = 0.8; 
+                        const speed = 0.5; 
 
                         // 1. EVENTOS RATÓN (DRAG)
                         slider.addEventListener('mousedown', (e) => {

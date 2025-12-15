@@ -225,12 +225,13 @@ def show_specific_content(user):
         cols_e = [
             {'name': 'fecha', 'label': 'FECHA', 'field': 'fecha', 'align': 'left', 'headerClasses': 'bg-gray-100 font-bold'},
             {'name': 'dia', 'label': 'DÍA', 'field': 'dia', 'align': 'center', 'headerClasses': 'bg-gray-100 font-bold'},
-            {'name': 'hora', 'label': 'HORA', 'field': 'hora', 'align': 'center', 'headerClasses': 'bg-blue-100 text-blue-900 font-bold'},
+            {'name': 'tipo', 'label': 'TIPO', 'field': 'tipo', 'align': 'center', 'headerClasses': 'bg-green-100 text-green-900 font-bold'},
+            {'name': 'hora', 'label': 'HORA', 'field': 'hora', 'align': 'center', 'headerClasses': 'bg-blue-100 text-blue-900 font-bold'}
         ]
 
         table6 = ui.table(
             columns=cols_e,
-            rows=[{'fecha': '', 'dia': '', 'hora': h} for h in hours_of_day],
+            rows=[{'fecha': '', 'dia': '', 'hora': h, 'tipo': ''} for h in hours_of_day],
             row_key='hora',
             selection='multiple'
         ).classes('w-full border border-gray-200 rounded-lg overflow-hidden').props('flat bordered separator=cell density=compact')

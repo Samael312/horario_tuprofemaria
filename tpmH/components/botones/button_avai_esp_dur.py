@@ -79,12 +79,15 @@ def make_add_hours_by_date_button(
         intervalo = f"{hora_inicio_fmt}-{hora_fin_fmt}"
         
         fecha = date_input.value
+        tipo = availability.value
         try:
             fecha_dt = datetime.strptime(fecha, "%Y-%m-%d")
             dia = dias_es[fecha_dt.strftime('%A')]
         except:
             ui.notify("Formato de fecha inválido", color="warning")
             return
+        
+       
 
         # Inicializar la estructura si la fecha no existe
         if fecha not in group_data:
@@ -96,6 +99,7 @@ def make_add_hours_by_date_button(
         group_data[fecha][intervalo] = {
             'fecha': fecha,
             'dia': dia,
+            'tipo': tipo,
             'hora': intervalo, 
             'button_id': button_id
         }
