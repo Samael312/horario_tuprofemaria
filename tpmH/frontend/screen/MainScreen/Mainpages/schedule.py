@@ -153,33 +153,61 @@ def scheduleMaker():
             dt = datetime.strptime(date_str, '%Y-%m-%d')
             day_name = days_of_week[dt.weekday()]
             
-            rules = session.query(ScheduleProfEsp).filter_by(date=date_str).all()
-            if not rules:
-                rules = session.query(ScheduleProf).filter_by(days=day_name).all()
+            # --- CAMBIO IMPORTANTE AQUI ---
+            
+            # 1. Cargamos SIEMPRE el horario general (Base)
+            general_rules = session.query(ScheduleProf).filter_by(days=day_name).all()
+            
+            # 2. Cargamos el horario específico (Excepciones)
+            specific_rules = session.query(ScheduleProfEsp).filter_by(date=date_str).all()
 
             available_ranges_prof = []
-            for r in rules:
-                status_bd = str(r.avai if hasattr(r, 'avai') else r.availability)
-                if status_bd in POSITIVE_STATUS:
+
+            # A) Agregamos disponibilidad GENERAL
+            for r in general_rules:
+                # Usamos getattr para seguridad, aunque en general es .availability
+                status = str(getattr(r, 'availability', ''))
+                if status in POSITIVE_STATUS:
                     available_ranges_prof.append((r.start_time, r.end_time))
             
+            # B) Agregamos disponibilidad ESPECÍFICA EXTRA (Si el profe agregó horas extra "Libre")
+            for r in specific_rules:
+                status = str(getattr(r, 'avai', '')) # En Esp suele llamarse .avai
+                if status in POSITIVE_STATUS:
+                    available_ranges_prof.append((r.start_time, r.end_time))
+
             if not available_ranges_prof: return [] 
 
+            # 3. BUSCAMOS LOS BLOQUEOS (Clases + Horarios Específicos Ocupados)
+            
+            # Bloqueos por Clases ya agendadas
             busy_classes = session.query(AsignedClasses).filter(
                 AsignedClasses.date == date_str, 
                 AsignedClasses.status != 'Cancelled'
             ).all()
             
             blocked_intervals_prof = []
+            
+            # Añadimos las clases a los bloqueos
             for c in busy_classes:
                 sp = c.start_prof_time if c.start_prof_time is not None else c.start_time
                 ep = c.end_prof_time if c.end_prof_time is not None else c.end_time
                 blocked_intervals_prof.append((sp, ep))
 
+            # --- NUEVO: Añadimos los horarios específicos "OCUPADO" como bloqueos ---
+            for r in specific_rules:
+                status = str(getattr(r, 'avai', ''))
+                if status not in POSITIVE_STATUS:
+                    # Si dice "Ocupado", "Meeting", etc., lo añadimos a la lista negra
+                    blocked_intervals_prof.append((r.start_time, r.end_time))
+
+            # -------------------------------
+
             def to_min(t): return int(str(t).zfill(4)[:2]) * 60 + int(str(t).zfill(4)[2:])
             def to_hhmm(mins): return int(f"{mins // 60}{str(mins % 60).zfill(2)}")
 
             prof_slots = []
+            # El resto de la lógica de iteración se mantiene igual...
             for r_start, r_end in available_ranges_prof:
                 curr_min = to_min(r_start)
                 end_min = to_min(r_end)
@@ -189,8 +217,10 @@ def scheduleMaker():
                     slot_end = curr_min + duration_mins
                     
                     is_blocked = False
+                    # Ahora este loop revisa TANTO clases COMO horarios específicos ocupados
                     for b_start, b_end in blocked_intervals_prof:
                         bs, be = to_min(b_start), to_min(b_end)
+                        # Lógica de colisión estricta
                         if (slot_start < be) and (slot_end > bs):
                             is_blocked = True; break
                     
