@@ -45,12 +45,14 @@ def my_classes():
     def get_user_classes():
         session = PostgresSession()
         try:
-            # A. Obtener Datos del Usuario (Para validar suscripción)
+            # A. Obtener Datos del Usuario
             user = session.query(User).filter(User.username == username).first()
             if user:
                 user_state['package'] = user.package
                 user_state['class_count_str'] = user.class_count or "0/0"
                 user_state['total_classes'] = user.total_classes or '0'
+                # Guardamos la zona horaria para usarla en las comparaciones
+                user_state['timezone'] = user.time_zone if user.time_zone else 'America/Caracas'
                 
                 # Parsear "X/Y"
                 try:
@@ -61,11 +63,18 @@ def my_classes():
                     user_state['current'] = 0
                     user_state['limit'] = PACKAGE_LIMITS.get(user.package, 0)
 
+            # --- CORRECCIÓN CRÍTICA DE TIEMPO ---
+            # 1. Definir "Ahora" según la zona del usuario, no la del servidor (UTC)
+            try:
+                user_tz = ZoneInfo(user_state['timezone'])
+            except:
+                user_tz = ZoneInfo('America/Caracas')
+
+            # Obtenemos la hora actual en la zona del usuario y quitamos la info de zona
+            # para poder comparar con las fechas 'naive' de la base de datos.
+            now_user_local = datetime.now(user_tz).replace(tzinfo=None)
+
             # B. Actualizar estados (Auto-Finalizar clases pasadas)
-            now = datetime.now()
-            now_int = int(now.strftime("%Y%m%d%H%M"))
-            
-            # Buscamos clases activas (Pendientes o Prueba)
             active_classes = session.query(AsignedClasses).filter(
                 AsignedClasses.username == username,
                 AsignedClasses.status.in_(['Pendiente', 'Prueba_Pendiente'])
@@ -73,11 +82,23 @@ def my_classes():
             
             updates = False
             for c in active_classes:
-                # Construir entero de fecha/hora: YYYYMMDDHHMM
-                c_dt_int = int(c.date.replace('-', '') + str(c.start_time).zfill(4))
-                if c_dt_int < now_int:
-                    c.status = 'Finalizada'
-                    updates = True
+                try:
+                    # Convertir fecha y hora de la clase a objeto datetime
+                    # start_time viene como entero (ej: 1200) -> string "1200"
+                    t_str = str(c.start_time).zfill(4) 
+                    c_start = datetime.strptime(f"{c.date} {t_str}", "%Y-%m-%d %H%M")
+                    
+                    # Calcular hora de FIN (Inicio + Duración)
+                    # Si no tiene duración, asumimos 60 min
+                    dur = c.duration if c.duration else 60
+                    c_end = c_start + timedelta(minutes=dur)
+
+                    # Si la hora actual (usuario) es mayor que la hora de FIN de la clase
+                    if now_user_local > c_end:
+                        c.status = 'Finalizada'
+                        updates = True
+                except Exception as e:
+                    logger.error(f"Error procesando fecha clase {c.id}: {e}")
             
             if updates:
                 session.commit()
@@ -91,11 +112,21 @@ def my_classes():
             history = []
             
             for c in all_classes:
-                c_dt_int = int(c.date.replace('-', '') + str(c.start_time).zfill(4))
-                
-                # CRITERIO DE HISTORIAL:
+                # Reutilizamos lógica de comparación para consistencia visual
                 is_history_status = c.status in HISTORY_STATUSES
-                is_past_time = c_dt_int < now_int
+                
+                # Calcular si ya pasó en el tiempo (lógica visual)
+                is_past_time = False
+                try:
+                    t_str = str(c.start_time).zfill(4)
+                    c_start = datetime.strptime(f"{c.date} {t_str}", "%Y-%m-%d %H%M")
+                    dur = c.duration if c.duration else 60
+                    c_end = c_start + timedelta(minutes=dur)
+                    
+                    if now_user_local > c_end:
+                        is_past_time = True
+                except:
+                    is_past_time = False
 
                 if is_history_status or is_past_time:
                     history.append(c)
