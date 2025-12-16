@@ -93,7 +93,7 @@ def OldStudent():
 def show_existing_classes(container):
     user = app.storage.user.get("username", "Usuario")
     local_group_data = {}
-    local_group_data_new = {}
+    local_group_data_new = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 
     with container:
         # Tarjeta Principal Estilo Dashboard
@@ -326,7 +326,7 @@ def show_existing_classes(container):
 def show_new_student_like(container):
     user = app.storage.user.get("username", "Usuario")
 
-    local_new_student = {}
+    local_new_student = {h: {d: '' for d in days_of_week} for h in hours_of_day}
     
     with container:
         with ui.card().classes('w-full shadow-lg rounded-xl overflow-hidden border border-gray-200 p-0'):
