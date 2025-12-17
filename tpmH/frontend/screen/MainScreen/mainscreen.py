@@ -102,23 +102,23 @@ def mainscreen():
         with ui.column().classes('items-center mb-10 text-center'):
             ui.label(f'¡Hola {username}!').classes('text-4xl md:text-5xl font-black text-gray-800 tracking-tight')
             ui.label('Bienvenido a tu plataforma de aprendizaje.').classes('text-lg text-rose-500 font-bold mb-1')
-            ui.label('¿Cómo deseas comenzar?').classes('text-lg text-gray-500 font-medium')
+            #ui.label('¿Cómo deseas comenzar?').classes('text-lg text-gray-500 font-medium')
 
         # 2. Contenedor de Tarjetas 
-        with ui.row().classes('w-full max-w-4xl justify-center gap-6 md:gap-10'):
+        with ui.row().classes('w-full max-w-2xl justify-center gap-6 md:gap-10'):
 
             # TARJETA 1: YA SOY ESTUDIANTE
-            with ui.card().classes('w-full md:w-80 p-6 items-center text-center shadow-lg hover:shadow-2xl transition-all duration-300 border-t-4 border-blue-500 rounded-xl cursor-pointer') \
-                    .on('click', lambda: ui.navigate.to('/oldStudent')): 
-                
-                with ui.element('div').classes('bg-blue-50 p-4 rounded-full mb-4'):
-                    ui.icon('history_edu', size='xl', color='blue-600')
-                
-                ui.label('Ya soy Estudiante').classes('text-xl font-bold text-gray-800 mb-2')
-                ui.label('Agendar clases anteriores y configurar horario preferencial.').classes('text-sm text-gray-500 mb-6 leading-relaxed')
-                
-                ui.button('CONFIGURAR PERFIL', icon='arrow_forward', on_click=lambda: ui.navigate.to('/myclasses')) \
-                    .props('rounded outline color=blue').classes('w-full hover:bg-blue-50')
+            #with ui.card().classes('w-full md:w-80 p-6 items-center text-center shadow-lg hover:shadow-2xl transition-all duration-300 border-t-4 border-blue-500 rounded-xl cursor-pointer') \
+            #        .on('click', lambda: ui.navigate.to('/oldStudent')): 
+            #    
+            #    with ui.element('div').classes('bg-blue-50 p-4 rounded-full mb-4'):
+            #        ui.icon('history_edu', size='xl', color='blue-600')
+            #    
+            #    ui.label('Ya soy Estudiante').classes('text-xl font-bold text-gray-800 mb-2')
+            #    ui.label('Agendar clases anteriores y configurar horario preferencial.').classes('text-sm text-gray-500 mb-6 leading-relaxed')
+            #    
+            #    ui.button('CONFIGURAR PERFIL', icon='arrow_forward', on_click=lambda: ui.navigate.to('/myclasses')) \
+            #       .props('rounded outline color=blue').classes('w-full hover:bg-blue-50')
 
             # TARJETA 2: NUEVO ESTUDIANTE
             with ui.card().classes('w-full md:w-80 p-6 items-center text-center shadow-lg hover:shadow-2xl transition-all duration-300 border-t-4 border-pink-500 rounded-xl cursor-pointer') \
