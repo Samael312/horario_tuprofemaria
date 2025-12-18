@@ -54,14 +54,14 @@ def my_classesAdmin():
     }
 
     # ==============================================================================
-    # 1. FUNCIÓN DE SINCRONIZACIÓN
+    # 1. FUNCIÓN DE SINCRONIZACIÓN (OPTIMIZADA)
     # ==============================================================================
     async def run_sync():
         """
-        Maneja la sincronización manual recibiendo ahora un diccionario.
+        Maneja la sincronización manual recibiendo el resultado del espejo BD -> Google.
         """
         notification = ui.notification(timeout=None)
-        notification.message = 'Sincronizando Google Calendar...'
+        notification.message = 'Sincronizando con Google Calendar (Modo Espejo)...'
         notification.spinner = True
         
         try:
@@ -76,18 +76,22 @@ def my_classesAdmin():
             
             notification.dismiss()
             
-            # Accedemos a la clave 'msg' para mostrar el texto al usuario
-            ui.notify(result_data['msg'], type='positive', icon='cloud_sync', close_button=True)
+            # 1. Usamos .get() por seguridad para evitar el error 'new_count' si algo falla
+            msg = result_data.get('msg', 'Sincronización finalizada')
+            new_c = result_data.get('new_count', 0)
+            upd_c = result_data.get('updated_count', 0)
             
-            # Refrescamos la UI si hubo cambios
-            if result_data['new_count'] > 0 or result_data['updated_count'] > 0:
-                refresh_ui()
-            else:
-                # Opcional: refrescar siempre por si acaso
-                refresh_ui()
+            # 2. Notificación al usuario
+            ui.notify(msg, type='positive', icon='cloud_sync', close_button=True)
+            
+            # 3. Refrescar la UI siempre
+            # Ya sea que hubo cambios o no, es mejor refrescar para asegurar consistencia
+            refresh_ui()
                 
         except Exception as e:
-            notification.dismiss()
+            if notification:
+                notification.dismiss()
+            logger.error(f"Error en run_sync UI: {e}")
             ui.notify(f'Error al sincronizar: {str(e)}', type='negative')
     
     # 1. LOGICA DE DATOS
