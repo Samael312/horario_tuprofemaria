@@ -2,13 +2,13 @@ import os
 import json
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone # <--- IMPORTANTE: timezone agregado
 from dateutil import parser
 from dotenv import load_dotenv
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# Importamos tus modelos y sesión
+# Importamos tus modelos y sesión (Ajusta si la ruta es diferente en tu proyecto)
 from db.models import AsignedClasses
 from db.postgres_db import PostgresSession
 
@@ -24,11 +24,13 @@ load_dotenv()
 
 def sync_google_calendar_logic(teacher_email):
     """
-    Sincronización BIDIRECCIONAL con VERIFICACIÓN ESTRICTA (5 CAMPOS).
-    Campos verificados: Nombre, Apellido, Fecha, Hora Inicio, Hora Final.
+    Sincronización BIDIRECCIONAL con:
+    1. Fix de Paginación (lee todos los eventos, no solo los primeros 100).
+    2. Fix de Timezone (evita error de datetime.utcnow).
+    3. Verificación Estricta (5 CAMPOS).
     """
     logger.info("==================================================")
-    logger.info("🚀 INICIANDO SYNC (VERIFICACIÓN ESTRICTA 5 CAMPOS)")
+    logger.info("🚀 INICIANDO SYNC (FIXED: PAGINACIÓN + TIMEZONE)")
     logger.info("==================================================")
     
     # --- 1. CONFIGURACIÓN DE CREDENCIALES ---
@@ -56,7 +58,6 @@ def sync_google_calendar_logic(teacher_email):
     session = PostgresSession()
     
     # A. Snapshot de BD: (nombre, apellido, fecha, start, end)
-    # Se usa para bloquear BAJADAS (Google -> BD) duplicadas
     db_signatures = set()
     
     try:
@@ -65,10 +66,8 @@ def sync_google_calendar_logic(teacher_email):
         ).all()
         
         for c in all_db_classes:
-            # Usamos date_prof preferiblemente
             d_ref = c.date_prof if c.date_prof else c.date
             
-            # Normalización de strings
             n_ref = c.name.strip().lower() if c.name else ""
             s_ref = c.surname.strip().lower() if c.surname else ""
             
@@ -82,21 +81,40 @@ def sync_google_calendar_logic(teacher_email):
     except Exception as e:
         logger.error(f"⚠️ Error cargando snapshot de BD: {e}")
 
-    # B. Obtener eventos de Google
-    now_utc = datetime.utcnow()
-    now_iso = now_utc.isoformat() + 'Z'
+    # --- 3. OBTENER EVENTOS DE GOOGLE (CORREGIDO) ---
+    # Fix Timezone
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.isoformat().replace("+00:00", "Z")
+    
+    google_events = []
+    page_token = None
     
     try:
-        logger.info(f"📥 Solicitando eventos a Google...")
-        events_result = service.events().list(
-            calendarId=teacher_email, timeMin=now_iso,
-            maxResults=100, singleEvents=True,
-            orderBy='startTime').execute()
+        logger.info(f"📥 Solicitando TODOS los eventos a Google desde {now_iso}...")
+        
+        # Fix Paginación: Bucle para traer todo (incluso 2026)
+        while True:
+            events_result = service.events().list(
+                calendarId=teacher_email, 
+                timeMin=now_iso,
+                maxResults=2500,  # Máximo permitido por Google por página
+                singleEvents=True,
+                orderBy='startTime',
+                pageToken=page_token
+            ).execute()
+            
+            items = events_result.get('items', [])
+            google_events.extend(items)
+            
+            page_token = events_result.get('nextPageToken')
+            if not page_token:
+                break
+        
+        logger.info(f"📥 Total eventos descargados de Google: {len(google_events)}")
+
     except Exception as e:
         session.close()
         raise Exception(f"Error conectando al calendario: {e}")
-
-    google_events = events_result.get('items', [])
     
     count_added_db = 0
     count_uploaded_google = 0
@@ -104,8 +122,7 @@ def sync_google_calendar_logic(teacher_email):
     tuprofemaria_url = "https://horario-tuprofemaria.onrender.com"
     header_msg = "📅 Clase gestionada por Tuprofemaria"
     
-    # C. Snapshot de Google: (summary_normalized, start_iso, end_iso)
-    # Se usa para bloquear SUBIDAS (BD -> Google) duplicadas
+    # C. Snapshot de Google para evitar duplicados en subida
     google_signatures = set()
 
     try:
@@ -127,9 +144,8 @@ def sync_google_calendar_logic(teacher_email):
                 dt_end_gcal = parser.parse(end_raw)
                 
                 # Guardamos firma para Fase B (Bloquear subidas)
-                # Normalizamos summary completo
                 g_summ_norm = summary.strip().lower()
-                # ISO sin offset para comparar timestamps exactos
+                # ISO sin offset para comparar timestamps exactos (string matching)
                 g_start_iso = dt_start_gcal.strftime("%Y-%m-%dT%H:%M:%S")
                 g_end_iso = dt_end_gcal.strftime("%Y-%m-%dT%H:%M:%S")
                 
@@ -139,30 +155,23 @@ def sync_google_calendar_logic(teacher_email):
                 date_str = dt_start_gcal.strftime("%Y-%m-%d")
                 start_int = int(dt_start_gcal.strftime("%H%M"))
                 
-                # Calcular end_int (con redondeo si es necesario)
                 raw_end_int = int(dt_end_gcal.strftime("%H%M"))
                 if dt_end_gcal.minute >= 45:
-                    # Si termina ej 10:50, lo redondeamos a 1100 para consistencia si así se guarda
                     next_h = dt_end_gcal + timedelta(hours=1)
                     end_int = int(next_h.replace(minute=0).strftime("%H%M"))
                 else:
                     end_int = raw_end_int
 
-                # Separar Nombre y Apellido (Heurística: Primer espacio)
                 parts = summary.strip().split(' ')
                 name_val = parts[0]
                 surname_val = " ".join(parts[1:]) if len(parts) > 1 else ""
                 
-                # Normalizar para comparación
                 name_check = name_val.strip().lower()
                 surname_check = surname_val.strip().lower()
                 
-                # --- VERIFICACIÓN ANTI-DUPLICADOS (BAJADA) ---
-                # Comparamos la Tupla de 5 elementos
                 candidate_sig = (name_check, surname_check, date_str, start_int, end_int)
                 
                 if candidate_sig in db_signatures:
-                    # logger.info(f"  💤 Ignorado (Ya existe en BD): {summary}")
                     continue
                 
                 # --- INSERCIÓN ---
@@ -184,7 +193,6 @@ def sync_google_calendar_logic(teacher_email):
                     duration=str_duration,
                     start_time=start_int,
                     end_time=end_int,
-                    # Datos Profesor (Caracas)
                     start_prof_time=start_int,
                     end_prof_time=end_int,
                     date_prof=date_str,
@@ -194,8 +202,6 @@ def sync_google_calendar_logic(teacher_email):
                     total_classes=0
                 )
                 session.add(new_class)
-                
-                # Actualizar cache local
                 db_signatures.add(candidate_sig)
                 count_added_db += 1
                 logger.info(f"  ✅ BAJADA BD: {summary} ({date_str} {start_int}-{end_int})")
@@ -227,11 +233,9 @@ def sync_google_calendar_logic(teacher_email):
             current_date_prof = local_class.date_prof if local_class.date_prof else local_class.date
             
             try:
-                # Construir DateTime Inicio
                 s_time_str = str(local_class.start_prof_time).zfill(4)
                 start_dt_obj = datetime.strptime(f"{current_date_prof} {s_time_str[:2]}:{s_time_str[2:]}", "%Y-%m-%d %H:%M")
                 
-                # Construir DateTime Fin
                 e_time_str = str(local_class.end_prof_time).zfill(4)
                 end_dt_obj = datetime.strptime(f"{current_date_prof} {e_time_str[:2]}:{e_time_str[2:]}", "%Y-%m-%d %H:%M")
                 
@@ -239,20 +243,15 @@ def sync_google_calendar_logic(teacher_email):
                     end_dt_obj += timedelta(days=1)
                 
                 # Generar Firma para verificar con Google
-                # 1. Summary normalizado
                 check_summ = full_name.strip().lower()
-                # 2. Fechas ISO
                 check_start_iso = start_dt_obj.strftime("%Y-%m-%dT%H:%M:%S")
                 check_end_iso = end_dt_obj.strftime("%Y-%m-%dT%H:%M:%S")
                 
                 check_sig = (check_summ, check_start_iso, check_end_iso)
                 
-                # --- VERIFICACIÓN ANTI-DUPLICADOS (SUBIDA) ---
                 if check_sig in google_signatures:
-                    # logger.info(f"  ⛔ Omitido (Ya existe en Calendar): {full_name}")
                     continue
 
-                # --- SUBIDA ---
                 logger.info(f"  🚀 Subiendo a Calendar: {full_name} -> {check_start_iso}")
                 
                 event_body = {
@@ -271,7 +270,6 @@ def sync_google_calendar_logic(teacher_email):
                 
                 service.events().insert(calendarId=teacher_email, body=event_body).execute()
                 
-                # Actualizar cache
                 google_signatures.add(check_sig)
                 count_uploaded_google += 1
 
@@ -283,7 +281,6 @@ def sync_google_calendar_logic(teacher_email):
         logger.info("==================================================")
         logger.info(final_msg)
         
-        # MODIFICACIÓN AQUÍ: Agregamos los contadores al diccionario de retorno
         return {
             "msg": final_msg,
             "new_count": count_added_db,
