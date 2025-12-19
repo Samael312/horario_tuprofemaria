@@ -12,6 +12,8 @@ from db.postgres_db import PostgresSession
 from db.sqlite_db import BackupSession
 from db.models import AsignedClasses, User, ScheduleProf, ScheduleProfEsp, SchedulePref
 from components.headerAdmin import create_admin_screen
+from components.db_migration import backup_entire_database
+
 
 from components.share_data import days_of_week, PACKAGE_LIMITS 
 
@@ -54,14 +56,16 @@ def my_classesAdmin():
     }
 
     # ==============================================================================
-    # 1. FUNCIÓN DE SINCRONIZACIÓN (OPTIMIZADA)
+    # 1. FUNCIÓN DE SINCRONIZACIÓN Y RESPALDO (INTEGRADA)
     # ==============================================================================
     async def run_sync():
         """
-        Maneja la sincronización manual recibiendo el resultado del espejo BD -> Google.
+        Ejecuta secuencialmente:
+        1. Sincronización Bidireccional Google Calendar <-> Neon
+        2. Respaldo total Neon -> Supabase
         """
+        # --- CONFIGURACIÓN DE UI ---
         notification = ui.notification(timeout=None)
-        notification.message = 'Sincronizando con Google Calendar (Modo Espejo)...'
         notification.spinner = True
         
         try:
@@ -71,28 +75,61 @@ def my_classesAdmin():
                 ui.notify('Error: Falta CALENDAR_ID en .env', type='negative')
                 return
 
-            # Llamamos a la lógica en un hilo aparte
-            result_data = await asyncio.to_thread(sync_google_calendar_logic, teacher_email)
+            # ==========================================
+            # FASE 1: GOOGLE CALENDAR SYNC
+            # ==========================================
+            notification.message = 'Fase 1/2: Sincronizando Google Calendar...'
             
+            # Ejecutamos en hilo aparte para no congelar la UI
+            google_result = await asyncio.to_thread(sync_google_calendar_logic, teacher_email)
+            
+            # Extraemos resultados de Google
+            g_msg = google_result.get('msg', 'Google Sync OK')
+            g_new = google_result.get('new_count', 0)
+            g_upd = google_result.get('updated_count', 0)
+
+            # ==========================================
+            # FASE 2: RESPALDO A SUPABASE
+            # ==========================================
+            notification.message = 'Fase 2/2: Clonando Base de Datos a Supabase...'
+            
+            # Ejecutamos el respaldo también en hilo aparte (es pesado)
+            backup_result = await asyncio.to_thread(backup_entire_database)
+
             notification.dismiss()
+
+            # ==========================================
+            # REPORTE FINAL
+            # ==========================================
             
-            # 1. Usamos .get() por seguridad para evitar el error 'new_count' si algo falla
-            msg = result_data.get('msg', 'Sincronización finalizada')
-            new_c = result_data.get('new_count', 0)
-            upd_c = result_data.get('updated_count', 0)
+            # Construir mensaje de éxito/error del respaldo
+            if backup_result.get("success"):
+                db_status = "✅ Respaldo Supabase OK"
+            else:
+                db_error = backup_result.get("error", "Error desconocido")
+                db_status = f"⚠️ Falló Respaldo: {db_error}"
+                logger.error(f"Error Backup: {db_error}")
+
+            # Notificación combinada para el usuario
+            final_message = (
+                f"Sincronización Completa:\n"
+                f"⬇️ {g_new} bajadas | ⬆️ {g_upd} subidas\n"
+                f"{db_status}"
+            )
             
-            # 2. Notificación al usuario
-            ui.notify(msg, type='positive', icon='cloud_sync', close_button=True)
+            # Si hubo error en respaldo, usamos warning, si no positive
+            notif_type = 'warning' if not backup_result.get("success") else 'positive'
             
-            # 3. Refrescar la UI siempre
-            # Ya sea que hubo cambios o no, es mejor refrescar para asegurar consistencia
+            ui.notify(final_message, type=notif_type, icon='cloud_done', multi_line=True, close_button=True)
+
+            # Refrescar la UI para mostrar los nuevos datos traídos de Google
             refresh_ui()
-                
+
         except Exception as e:
             if notification:
                 notification.dismiss()
-            logger.error(f"Error en run_sync UI: {e}")
-            ui.notify(f'Error al sincronizar: {str(e)}', type='negative')
+            logger.error(f"Error crítico en run_sync: {e}")
+            ui.notify(f'Error crítico: {str(e)}', type='negative')
     
     # 1. LOGICA DE DATOS
     def get_all_classes():
