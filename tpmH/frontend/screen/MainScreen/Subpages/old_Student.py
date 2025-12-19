@@ -92,6 +92,8 @@ def OldStudent():
 # ==========================================
 def show_existing_classes(container):
     user = app.storage.user.get("username", "Usuario")
+    local_group_data = {}
+    local_group_data_new = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 
     with container:
         # Tarjeta Principal Estilo Dashboard
@@ -175,7 +177,7 @@ def show_existing_classes(container):
                 # Controles de Tabla
                 with ui.row().classes('w-full justify-between items-center mt-2'):
                     with ui.row().classes('gap-2'):
-                        ui.button('Limpiar', on_click=lambda: clear_table(table1, group_data3), icon='cleaning_services', color='warning').props('flat dense')
+                        ui.button('Limpiar', on_click=lambda: clear_table(table1, local_group_data), icon='cleaning_services', color='warning').props('flat dense')
                         ui.button('Borrar Seleccionados', icon='delete', color='negative', on_click=lambda: delete_selected_rows_v2(table1, selection_state, id_column="hora")).props('flat dense')
                     
                     # Botón Guardar Principal
@@ -193,7 +195,7 @@ def show_existing_classes(container):
                     start_time_input=startD_time,
                     duration_selector=duration_selector1,
                     date_input=date_input,
-                    group_data=group_data3,
+                    group_data=local_group_data,
                     table=table1,
                     notify_success="Clase agregada a la lista"
                 )
@@ -277,7 +279,7 @@ def show_existing_classes(container):
                 # Footer Tabla
                 with ui.row().classes('w-full justify-between items-center mt-2'):
                     with ui.row().classes('gap-2'):
-                        ui.button('Limpiar', on_click=lambda: clear_table(table5, group_data2), icon='cleaning_services', color='warning').props('flat dense')
+                        ui.button('Limpiar', on_click=lambda: clear_table(table5, local_group_data_new), icon='cleaning_services', color='warning').props('flat dense')
                         ui.button('Borrar Seleccionados', icon='delete', color='negative', on_click=lambda: delete_selected_rows_v2(table5, selection_state3, id_column="hora")).props('flat dense')
 
                     save_button2 = ui.button('Guardar Preferencias', icon='save', color='positive').props('push')
@@ -295,7 +297,7 @@ def show_existing_classes(container):
                     time_input=start_time,
                     end_time_input=end_time,
                     valid_hours=hours_of_day,
-                    group_data=group_data2,
+                    group_data=local_group_data_new,
                     days_of_week=days_of_week,
                     table=table5,
                     notify_success="Rango horario añadido",
@@ -323,6 +325,8 @@ def show_existing_classes(container):
 # ==========================================
 def show_new_student_like(container):
     user = app.storage.user.get("username", "Usuario")
+
+    local_new_student = {h: {d: '' for d in days_of_week} for h in hours_of_day}
     
     with container:
         with ui.card().classes('w-full shadow-lg rounded-xl overflow-hidden border border-gray-200 p-0'):
@@ -412,7 +416,7 @@ def show_new_student_like(container):
                 # Footer Tabla
                 with ui.row().classes('w-full justify-between items-center mt-2'):
                     with ui.row().classes('gap-2'):
-                        ui.button('Limpiar', on_click=lambda: clear_table(table4, group_data2), icon='cleaning_services', color='warning').props('flat dense')
+                        ui.button('Limpiar', on_click=lambda: clear_table(table4, local_new_student), icon='cleaning_services', color='warning').props('flat dense')
                         ui.button('Borrar Seleccionados', icon='delete', color='negative', on_click=lambda: delete_selected_rows_v2(table4, selection_state3, id_column="hora")).props('flat dense')
 
                     save_button = ui.button('Guardar Preferencias', icon='save', color='positive').props('push')
@@ -430,7 +434,7 @@ def show_new_student_like(container):
                     time_input=start_time,
                     end_time_input=end_time,
                     valid_hours=hours_of_day,
-                    group_data=group_data2,
+                    group_data=local_new_student,
                     days_of_week=days_of_week,
                     table=table4,
                     notify_success="Rango horario añadido",
