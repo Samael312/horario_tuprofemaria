@@ -17,7 +17,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
 # =========================
 # NEW STUDENT PAGE
 # =========================
@@ -29,6 +28,9 @@ def new_student():
         ui.navigate.to('/login')
         return
 
+    
+    group_data = {h: {d: '' for d in days_of_week} for h in hours_of_day}
+    
     create_main_screen()
 
 
