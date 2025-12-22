@@ -2,13 +2,13 @@ import os
 import json
 import logging
 import random
-from datetime import datetime, timedelta, timezone # <--- IMPORTANTE: timezone agregado
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from dateutil import parser
 from dotenv import load_dotenv
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# Importamos tus modelos y sesión (Ajusta si la ruta es diferente en tu proyecto)
 from db.models import AsignedClasses
 from db.postgres_db import PostgresSession
 
@@ -24,15 +24,16 @@ load_dotenv()
 
 def sync_google_calendar_logic(teacher_email):
     """
-    Sincronización BIDIRECCIONAL con:
-    1. Fix de Paginación (lee todos los eventos, no solo los primeros 100).
-    2. Fix de Timezone (evita error de datetime.utcnow).
-    3. Verificación Estricta (5 CAMPOS).
+    Sincronización Corregida:
+    1. timeMin se fija al inicio del día para evitar duplicar clases pasadas del mismo día.
+    2. Se añade filtrado extra de eventos cancelados.
     """
     logger.info("==================================================")
-    logger.info("🚀 INICIANDO SYNC (FIXED: PAGINACIÓN + TIMEZONE)")
+    logger.info("🚀 INICIANDO SYNC (FIX DUPLICADOS & GHOSTS)")
     logger.info("==================================================")
     
+    LOCAL_TZ = ZoneInfo("America/Caracas")
+
     # --- 1. CONFIGURACIÓN DE CREDENCIALES ---
     creds = None
     SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -54,10 +55,12 @@ def sync_google_calendar_logic(teacher_email):
         logger.error(f"❌ Error crítico en autenticación: {e}")
         raise e
     
-    # --- 2. PREPARACIÓN DE SNAPSHOTS (MEMORIA) ---
     session = PostgresSession()
     
-    # A. Snapshot de BD: (nombre, apellido, fecha, start, end)
+    # =========================================================================
+    # 2. PREPARACIÓN DE SNAPSHOTS (MEMORIA)
+    # =========================================================================
+    
     db_signatures = set()
     
     try:
@@ -65,15 +68,15 @@ def sync_google_calendar_logic(teacher_email):
             AsignedClasses.status.notin_(['Cancelada', 'Cancelled'])
         ).all()
         
+        logger.info("--- 📸 CARGANDO SNAPSHOT DB ---")
         for c in all_db_classes:
             d_ref = c.date_prof if c.date_prof else c.date
-            
             n_ref = c.name.strip().lower() if c.name else ""
             s_ref = c.surname.strip().lower() if c.surname else ""
             
-            if d_ref and c.start_prof_time is not None and c.end_prof_time is not None:
-                # LA FIRMA DE 5 PUNTOS
-                signature = (n_ref, s_ref, d_ref, int(c.start_prof_time), int(c.end_prof_time))
+            if d_ref and c.start_prof_time is not None:
+                # FIRMA LOCAL: (nombre, apellido, fecha YYYY-MM-DD, inicio HHMM)
+                signature = (n_ref, s_ref, d_ref, int(c.start_prof_time))
                 db_signatures.add(signature)
                 
         logger.info(f"💾 Snapshot BD cargado: {len(db_signatures)} firmas únicas.")
@@ -82,34 +85,35 @@ def sync_google_calendar_logic(teacher_email):
         logger.error(f"⚠️ Error cargando snapshot de BD: {e}")
 
     # --- 3. OBTENER EVENTOS DE GOOGLE (CORREGIDO) ---
-    # Fix Timezone
-    now_utc = datetime.now(timezone.utc)
-    now_iso = now_utc.isoformat().replace("+00:00", "Z")
+    
+    # CORRECCIÓN IMPORTANTE:
+    # Usamos el inicio del día actual (00:00:00) en UTC para timeMin.
+    # Esto asegura que si el script corre a las 5PM, descargue también las clases de la 1PM de hoy
+    # y no las considere "faltantes" en Google.
+    now_local = datetime.now(LOCAL_TZ)
+    start_of_day_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_day_utc = start_of_day_local.astimezone(timezone.utc)
+    time_min_iso = start_of_day_utc.isoformat().replace("+00:00", "Z")
     
     google_events = []
     page_token = None
     
     try:
-        logger.info(f"📥 Solicitando TODOS los eventos a Google desde {now_iso}...")
-        
-        # Fix Paginación: Bucle para traer todo (incluso 2026)
+        logger.info(f"📥 Solicitando eventos a Google desde {time_min_iso} (Inicio del día)...")
         while True:
             events_result = service.events().list(
                 calendarId=teacher_email, 
-                timeMin=now_iso,
-                maxResults=2500,  # Máximo permitido por Google por página
+                timeMin=time_min_iso,
+                maxResults=2500,
                 singleEvents=True,
                 orderBy='startTime',
                 pageToken=page_token
             ).execute()
-            
             items = events_result.get('items', [])
             google_events.extend(items)
-            
             page_token = events_result.get('nextPageToken')
             if not page_token:
                 break
-        
         logger.info(f"📥 Total eventos descargados de Google: {len(google_events)}")
 
     except Exception as e:
@@ -118,40 +122,39 @@ def sync_google_calendar_logic(teacher_email):
     
     count_added_db = 0
     count_uploaded_google = 0
-    
-    tuprofemaria_url = "https://horario-tuprofemaria.onrender.com"
     header_msg = "📅 Clase gestionada por Tuprofemaria"
     
-    # C. Snapshot de Google para evitar duplicados en subida
     google_signatures = set()
 
     try:
         # =========================================================================
         # FASE A: GOOGLE -> BASE DE DATOS
         # =========================================================================
-        logger.info("--- 🔽 FASE A: GOOGLE -> BD ---")
+        logger.info("--- 🔽 FASE A: PROCESANDO DESCARGAS (GOOGLE -> BD) ---")
 
         for event in google_events:
             summary = event.get('summary', 'Sin Nombre')
             start_raw = event['start'].get('dateTime')
             end_raw = event['end'].get('dateTime')
+            status = event.get('status')
             
+            # Filtro de seguridad para eventos cancelados fantasmas
+            if status == 'cancelled':
+                continue
+
             if not start_raw: continue 
             
             try:
-                # 1. Parsear datos de Google
-                dt_start_gcal = parser.parse(start_raw)
-                dt_end_gcal = parser.parse(end_raw)
+                dt_start_gcal = parser.parse(start_raw).astimezone(LOCAL_TZ)
+                dt_end_gcal = parser.parse(end_raw).astimezone(LOCAL_TZ)
                 
-                # Guardamos firma para Fase B (Bloquear subidas)
+                # Firma para evitar Re-Subida
                 g_summ_norm = summary.strip().lower()
-                # ISO sin offset para comparar timestamps exactos (string matching)
-                g_start_iso = dt_start_gcal.strftime("%Y-%m-%dT%H:%M:%S")
-                g_end_iso = dt_end_gcal.strftime("%Y-%m-%dT%H:%M:%S")
+                g_start_iso_clean = dt_start_gcal.strftime("%Y-%m-%dT%H:%M:%S")
                 
-                google_signatures.add((g_summ_norm, g_start_iso, g_end_iso))
+                google_signatures.add((g_summ_norm, g_start_iso_clean))
                 
-                # 2. Preparar datos para comparar con BD
+                # Preparar datos BD
                 date_str = dt_start_gcal.strftime("%Y-%m-%d")
                 start_int = int(dt_start_gcal.strftime("%H%M"))
                 
@@ -169,12 +172,14 @@ def sync_google_calendar_logic(teacher_email):
                 name_check = name_val.strip().lower()
                 surname_check = surname_val.strip().lower()
                 
-                candidate_sig = (name_check, surname_check, date_str, start_int, end_int)
+                candidate_sig = (name_check, surname_check, date_str, start_int)
                 
                 if candidate_sig in db_signatures:
                     continue
                 
-                # --- INSERCIÓN ---
+                logger.info(f"  [NUEVO ENCONTRADO] Google trae: {summary} el {date_str} a las {start_int}")
+
+                # INSERCIÓN
                 duration_minutes = float((dt_end_gcal - dt_start_gcal).total_seconds() / 60)
                 if 20 <= duration_minutes <= 40: str_duration = "30"
                 elif 45 <= duration_minutes <= 60: str_duration = "50"
@@ -204,7 +209,7 @@ def sync_google_calendar_logic(teacher_email):
                 session.add(new_class)
                 db_signatures.add(candidate_sig)
                 count_added_db += 1
-                logger.info(f"  ✅ BAJADA BD: {summary} ({date_str} {start_int}-{end_int})")
+                logger.info(f"  ✅ AGREGADO A BD: {summary}")
 
             except Exception as e:
                 logger.error(f"  ❌ Error procesando evento Google '{summary}': {e}")
@@ -215,9 +220,9 @@ def sync_google_calendar_logic(teacher_email):
         # =========================================================================
         # FASE B: BD -> GOOGLE
         # =========================================================================
-        logger.info("--- 🔼 FASE B: BD -> GOOGLE ---")
+        logger.info("--- 🔼 FASE B: PROCESANDO SUBIDAS (BD -> GOOGLE) ---")
         
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d")
         
         local_classes = session.query(AsignedClasses).filter(
             AsignedClasses.date_prof >= today_str,
@@ -235,24 +240,24 @@ def sync_google_calendar_logic(teacher_email):
             try:
                 s_time_str = str(local_class.start_prof_time).zfill(4)
                 start_dt_obj = datetime.strptime(f"{current_date_prof} {s_time_str[:2]}:{s_time_str[2:]}", "%Y-%m-%d %H:%M")
+                start_dt_obj = start_dt_obj.replace(tzinfo=LOCAL_TZ)
                 
                 e_time_str = str(local_class.end_prof_time).zfill(4)
                 end_dt_obj = datetime.strptime(f"{current_date_prof} {e_time_str[:2]}:{e_time_str[2:]}", "%Y-%m-%d %H:%M")
+                end_dt_obj = end_dt_obj.replace(tzinfo=LOCAL_TZ)
                 
                 if local_class.end_prof_time < local_class.start_prof_time:
                     end_dt_obj += timedelta(days=1)
                 
-                # Generar Firma para verificar con Google
                 check_summ = full_name.strip().lower()
                 check_start_iso = start_dt_obj.strftime("%Y-%m-%dT%H:%M:%S")
-                check_end_iso = end_dt_obj.strftime("%Y-%m-%dT%H:%M:%S")
-                
-                check_sig = (check_summ, check_start_iso, check_end_iso)
+                check_sig = (check_summ, check_start_iso)
                 
                 if check_sig in google_signatures:
                     continue
 
-                logger.info(f"  🚀 Subiendo a Calendar: {full_name} -> {check_start_iso}")
+                logger.info(f"  🚀 SUBIENDO A CALENDAR: {full_name}")
+                logger.info(f"     -> Fecha Local: {start_dt_obj}")
                 
                 event_body = {
                     "summary": full_name,
