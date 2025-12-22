@@ -1,7 +1,5 @@
 import zoneinfo
 
-# Definimos INFINITY para uso en límites
-INFINITY = float('inf')
 
 days_of_week = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']
 duration_options = ['30 minutos', '1 hora']
@@ -20,6 +18,9 @@ goals_list = [
     "Poder viajar al extranjero usando solo inglés"
 ]
 method_list = ["Paypal", "Binance", "Zelle"]
+
+# Definimos INFINITY para uso en límites
+INFINITY = float('inf')
 
 # Limite total de clases por paquete (Usado en el Registro/Signup)
 PACKAGE_LIMITS = {

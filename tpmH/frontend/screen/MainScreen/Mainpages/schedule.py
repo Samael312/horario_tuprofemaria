@@ -285,8 +285,12 @@ def scheduleMaker():
                 new_total_classes_seq = None
             else:
                 # Si es normal, incrementamos
-                current_class_num = used + 1
-                count_label = f"{current_class_num}/{limit}" if limit > 0 else f"{current_class_num}"
+                if pkg == "Flexible":
+                    current_class_num = total_lifetime_used + 1
+                    count_label = f"{current_class_num}/inf"
+                else:
+                    current_class_num = used + 1
+                    count_label = f"{current_class_num}/{limit}"
                 new_total_classes_seq = total_lifetime_used + 1
 
             new_class = AsignedClasses(
