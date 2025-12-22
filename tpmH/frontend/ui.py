@@ -26,6 +26,7 @@ from frontend.screen.MainScreen.Mainpages.material import student_materials_page
 from frontend.screen.MainScreen.Mainpages.work import student_homework_page
 from frontend.screen.adv_method import adv_method
 from frontend.screen.plans_screen import plan_screen
+from frontend.screen.reset_pass import reset_screen
 
 def init_ui():
     """Puente entre las pantallas de la app."""
@@ -46,6 +47,7 @@ def init_ui():
         create_main_screen()  # delega la UI real a mainscreen.py
         create_signup_screen()  # delega la UI real a signup_screen.py
         reset_password_screen()  # delega la UI real a reset_screen.py
+        reset_screen()
         new_student()
         OldStudent()
         profile()

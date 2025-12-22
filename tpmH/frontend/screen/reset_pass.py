@@ -44,12 +44,11 @@ def create_ui(content_function=None):
 # PÁGINA DE RESET PASSWORD
 # =====================================================
 @ui.page('/resetpass')
-def reset_password_screen():
+def reset_screen():
     """Pantalla para cambiar contraseña."""
 
     def render_reset_content():
         
-        # --- LÓGICA DE CAMBIO DE CONTRASEÑA ACTUALIZADA ---
         def try_reset():
             u = username_input.value.strip()
             email = email_input.value.strip()
@@ -59,35 +58,37 @@ def reset_password_screen():
                 ui.notify('Por favor, completa todos los campos.', type='warning', icon='warning')
                 return
 
-            # FASE 1: ACTUALIZAR EN LA NUBE (NEON - PRINCIPAL)
-            session_pg = PostgresSession()
+            # Calcular el hash antes de abrir sesiones para no bloquear la DB con CPU
+            try:
+                new_hash = pbkdf2_sha256.hash(new_p)
+            except Exception as e:
+                ui.notify(f'Error procesando contraseña: {e}', type='negative')
+                return
+
+            # Variables de control
             success = False
             
+            # FASE 1: ACTUALIZAR EN LA NUBE (NEON - PRINCIPAL)
+            session_pg = PostgresSession()
             try:
                 user_pg = session_pg.query(User).filter_by(username=u).first()
                 
-                # 1. Verificar Usuario en Neon
+                # 1. Validaciones
                 if not user_pg:
                     ui.notify('El usuario no existe.', type='negative', icon='person_off')
                     username_input.props('error error-message="Usuario no encontrado"')
-                    return
+                    return # Salimos y cerramos en finally
 
-                # 2. Verificar email
                 if not (email, user_pg.email) or email.lower() != user_pg.email.lower():
                     ui.notify('El email actual es incorrecto.', type='negative', icon='gpp_bad')
                     email_input.props('error') 
-                    return
+                    return # Salimos y cerramos en finally
 
-                # 3. Actualizar en Neon
-                new_hash = pbkdf2_sha256.hash(new_p)
+                # 2. Actualizar
                 user_pg.password_hash = new_hash
                 session_pg.commit()
                 
-                success = True # Marcamos éxito para proceder al backup
-                ui.notify('¡Contraseña actualizada correctamente!', type='positive', icon='check_circle')
-                
-                # Redirigir tras breve pausa
-                ui.timer(1, lambda: ui.navigate.to('/login'))
+                success = True # Marcamos éxito
 
             except Exception as e:
                 session_pg.rollback()
@@ -95,6 +96,42 @@ def reset_password_screen():
                 return
             finally:
                 session_pg.close()
+
+            # FASE 2: ACTUALIZAR RESPALDO (SQLITE)
+            # Solo si FASE 1 fue exitosa. Hacemos esto ANTES de notificar al usuario.
+            if success:
+                try:
+                    session_sqlite = BackupSession()
+                    user_sqlite = session_sqlite.query(User).filter_by(username=u).first()
+                    
+                    if user_sqlite:
+                        user_sqlite.password_hash = new_hash
+                        session_sqlite.commit()
+                        print(f"💾 Backup actualizado para usuario {u}")
+                    else:
+                        print(f"⚠️ El usuario {u} no existía en el backup local.")
+                        
+                except Exception as e:
+                    # El backup falló, pero la contraseña real YA SE CAMBIÓ.
+                    # Solo lo logueamos, no detenemos el flujo de la UI.
+                    print(f"⚠️ Error actualizando backup local: {e}")
+                finally:
+                    # Aseguramos cerrar la sesión de backup si se creó
+                    try:
+                        session_sqlite.close()
+                    except:
+                        pass
+
+                # --- NOTIFICACIÓN FINAL ---
+                # Ahora que todo el trabajo pesado terminó, actualizamos la UI.
+                ui.notify('¡Contraseña actualizada correctamente!', type='positive', icon='check_circle')
+                
+                # Deshabilitar botón para evitar doble clic mientras redirige
+                username_input.disable()
+                email_input.disable()
+                new_password_input.disable()
+                
+                ui.timer(2.0, lambda: ui.navigate.to('/login'))
 
             # FASE 2: ACTUALIZAR RESPALDO (SQLITE - SECUNDARIO)
             # Solo si la fase 1 fue exitosa
@@ -135,7 +172,7 @@ def reset_password_screen():
                     .classes('w-full')
                 username_input.add_slot('prepend', '<q-icon name="account_circle" />')
 
-                email_input = ui.input('Email', password=True, password_toggle_button=True) \
+                email_input = ui.input('Email') \
                     .props('outlined dense') \
                     .classes('w-full')
                 email_input.add_slot('prepend', '<q-icon name="email" />')
