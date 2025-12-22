@@ -1,0 +1,8 @@
+*.pyc
+__pycache__/
+
+credentials.json
+tpmH/credentials.json
+
+tpmH/db/backup_local.sqlite
+.sqlite
