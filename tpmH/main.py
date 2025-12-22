@@ -137,6 +137,10 @@ def main():
     logger.info("Aplicación iniciada correctamente")
 
 
+    logger.info("POSTGRES_URL: %s", os.environ.get("POSTGRES_URL"))
+    logger.info("CALENDAR_ID: %s", os.environ.get("CALENDAR_ID"))
+
+    
 if __name__ in {'__main__', '__mp_main__'}:
     main()
 

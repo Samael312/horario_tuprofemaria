@@ -90,7 +90,7 @@ def my_classes():
                     
                     # Calcular hora de FIN (Inicio + Duración)
                     # Si no tiene duración, asumimos 60 min
-                    dur = c.duration if c.duration else 60
+                    dur = int(c.duration) if c.duration else 60
                     c_end = c_start + timedelta(minutes=dur)
 
                     # Si la hora actual (usuario) es mayor que la hora de FIN de la clase
@@ -747,6 +747,15 @@ def my_classes():
         pkg_name = user_state['package']
         total_classes = user_state['total_classes']
 
+
+        raw_package = str(user_state.get('package', 'None'))
+        pkg_name_clean = raw_package.strip()
+        total_classes_raw = user_state.get('total_classes', 0)
+        int_total_clases = int(total_classes_raw)
+        flex_limit = 5
+
+        print(f"DEBUG -> Paquete DB: '{raw_package}' | Limpio: '{pkg_name_clean}' | Total Clases: {int_total_clases}")
+
         with ui.column().classes('w-full max-w-5xl mx-auto p-4 md:p-8 gap-8'):
             
             with ui.row().classes('w-full justify-between items-end'):
@@ -757,7 +766,17 @@ def my_classes():
                         ui.label(f'Bienvenido, {username}').classes('text-slate-500 font-medium')
                     
                 # LÓGICA DE BOTÓN
-                if limit > 0 and curr >= limit:
+                if pkg_name_clean == 'Flexible' and int_total_clases >= flex_limit:
+                    
+                    with ui.row().classes('items-center gap-2'):
+                        # Botón 1: Agendar
+                        ui.button('Agendar Nueva', icon='add', on_click=lambda: ui.navigate.to('/ScheduleMaker')) \
+                            .props('unelevated color=rose-600').classes('rounded-xl px-4 py-2 shadow-md shadow-rose-200 hover:shadow-lg transition-all')
+                        
+                        # Botón 2: Actualizar (Ahora con estilo visible)
+                        ui.button('Actualizar Suscripción', icon='published_with_changes', on_click=open_renewal_dialog) \
+                            .props('unelevated color=amber-600').classes('rounded-xl px-4 py-2 shadow-md shadow-amber-200 hover:shadow-lg transition-all')
+                elif limit > 0 and curr >= limit:
                     ui.button('Actualizar Suscripción', icon='published_with_changes', on_click=open_renewal_dialog) \
                         .props('unelevated color=amber-600').classes('rounded-xl px-4 py-2 shadow-md shadow-amber-200 hover:shadow-lg transition-all animate-bounce')
                 else:
