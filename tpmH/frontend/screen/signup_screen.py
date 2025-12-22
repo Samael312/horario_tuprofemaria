@@ -13,7 +13,7 @@ from components.share_data import PACKAGE_LIMITS, goals_list # IMPORTANTE: Para 
 # =====================================================
 # CONFIGURACIÓN
 # =====================================================
-unrestricted_page_routes = {'/signup', '/login', '/reset', '/MainPage', '/method'}
+unrestricted_page_routes = {'/signup', '/login', '/resetpass', '/MainPage', '/method'}
 all_timezones = sorted(zoneinfo.available_timezones())
 
 # =====================================================

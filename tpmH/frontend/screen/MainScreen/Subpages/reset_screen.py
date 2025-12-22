@@ -10,7 +10,7 @@ from db.sqlite_db import BackupSession       # Respaldo
 # =====================================================
 # CONFIGURACIÓN
 # =====================================================
-unrestricted_page_routes = {'/reset', '/login'}
+unrestricted_page_routes = {'/resetpass', '/login'}
 
 # =====================================================
 # UI PRINCIPAL (HEADER + LAYOUT GENERAL)
@@ -32,7 +32,7 @@ def create_ui(content_function=None):
             ui.label('TuProfeMaria').classes('text-xl font-black tracking-tight text-gray-800')
 
         # Botón volver al login
-        ui.button('Cancelar', on_click=lambda: ui.navigate.to('/login')) \
+        ui.button('Cancelar', on_click=lambda: ui.navigate.to('/profile')) \
             .props('flat color=grey-8 icon=close')
 
     # CONTENEDOR CENTRAL

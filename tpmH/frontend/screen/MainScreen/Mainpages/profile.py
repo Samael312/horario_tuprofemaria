@@ -43,6 +43,7 @@ def profile():
                 
                 with ui.fab(icon='settings', label='Opciones', color='pink-600', direction='left') :
                     ui.fab_action(icon='edit', label='Editar', on_click=lambda: ui.navigate.to('/profile_edit'), color='blue')
+                    ui.fab_action(icon='lock', label='Cambiar contraseña', on_click=lambda: ui.navigate.to('/reset'), color='orange')
                     ui.fab_action(icon='delete_forever', label='Eliminar cuenta', on_click=confirm_delete, color='red')
 
             # --- GRID LAYOUT (Responsive) ---

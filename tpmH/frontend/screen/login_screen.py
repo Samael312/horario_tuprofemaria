@@ -156,7 +156,7 @@ def setup_auth_system():
                         .classes('w-full rounded-lg')
                     
                     # Recuperar contraseña (Link sutil)
-                    ui.link('¿Olvidaste tu contraseña?', target='/reset') \
+                    ui.link('¿Olvidaste tu contraseña?', target='/resetpass') \
                         .classes('text-sm text-gray-500 hover:text-pink-600 transition-colors mt-2 decoration-none')
 
         # 3. Renderizar Layout

@@ -47,8 +47,8 @@ logger = logging.getLogger(__name__)
 # =====================================================
 
 unrestricted_page_routes = {
-    '/login', '/signup', '/reset', '/MainPage', '/method', '/planScreen'
-    '/login', '/signup', '/reset', '/MainPage', '/method', '/planScreen'
+    '/login', '/signup', '/resetpass', '/MainPage', '/method', '/planScreen'
+    '/login', '/signup', '/resetpass', '/MainPage', '/method', '/planScreen'
 }
 
 class AuthMiddleware(BaseHTTPMiddleware):
