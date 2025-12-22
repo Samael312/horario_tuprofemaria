@@ -98,7 +98,7 @@ def new_student():
                     app.storage.user.get('selected_plan')
                     
                     package_selector = ui.select(pack_of_classes, label='Paquete Activo', value=package)\
-                        .props('outlined dense options-dense behavior="menu"').classes('w-full md:w-1/3')
+                        .props('outlined dense options-dense behavior="menu"').classes('w-full')
                     package_selector.add_slot('prepend', '<q-icon name="inventory_2" />')
             
 
