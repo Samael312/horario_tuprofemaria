@@ -2,10 +2,10 @@ import os
 import logging
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, make_transient
+from sqlalchemy.orm import sessionmaker
 
 # --- 1. CARGA DE ENTORNO Y LOGS ---
-load_dotenv() # <--- ESTO ES CRUCIAL PARA LEER EL .ENV
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO, 
@@ -15,14 +15,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- 2. IMPORTA TUS MODELOS ---
-# Asegúrate de que la ruta 'db.models' sea correcta según tu estructura de carpetas
 from db.models import (
     Base, User, SchedulePref, AsignedClasses, ScheduleProf, 
     ScheduleProfEsp, TeacherProfile, Material, HWork, 
     StudentMaterial, StudentHWork
 )
 
-# Lista de tablas a clonar
+# Lista de tablas a clonar (El orden importa si hay claves foráneas)
 MODELS_TO_SYNC = [
     User, TeacherProfile, Material, HWork, 
     ScheduleProf, ScheduleProfEsp, SchedulePref, 
@@ -31,72 +30,92 @@ MODELS_TO_SYNC = [
 
 def backup_entire_database():
     """
-    Copia masiva de NEON (Postgres) a SUPABASE.
+    Sincronización Inteligente (Upsert):
+    Actualiza existentes, inserta nuevos y elimina obsoletos.
     """
     logger.info("==================================================")
-    logger.info("🚀 INICIANDO RESPALDO DE BASE DE DATOS (NEON -> SUPABASE)")
+    logger.info("🚀 INICIANDO SMART SYNC (NEON -> SUPABASE)")
     logger.info("==================================================")
 
-    # --- 3. OBTENER VARIABLES ---
-    # Usamos los nombres exactos que tienes en tu .env
     NEON_URL = os.getenv('POSTGRES_URL')       
     SUPABASE_URL = os.getenv('SUPABASE_DB_URL') 
 
-    # Diagnóstico de error específico
-    if not NEON_URL:
-        return {"success": False, "error": "Falta POSTGRES_URL en .env"}
-    if not SUPABASE_URL:
-        return {"success": False, "error": "Falta SUPABASE_DB_URL en .env"}
+    if not NEON_URL or not SUPABASE_URL:
+        return {"success": False, "error": "Faltan variables de entorno."}
 
-    # --- 4. CONFIGURAR MOTORES ---
     session_source = None
     session_dest = None
     
     try:
-        # Motor Origen (Neon)
+        # Motor Origen
         engine_source = create_engine(NEON_URL, pool_pre_ping=True)
         SessionSource = sessionmaker(bind=engine_source)
         session_source = SessionSource()
 
-        # Motor Destino (Supabase)
+        # Motor Destino
         engine_dest = create_engine(SUPABASE_URL, pool_pre_ping=True)
         SessionDest = sessionmaker(bind=engine_dest)
         session_dest = SessionDest()
         
-        logger.info("📡 Conexión establecida con ambas bases de datos.")
+        logger.info("📡 Conexión establecida.")
 
-        # --- 5. LÓGICA DE COPIA ---
-        stats = {}
-        
-        # Crear tablas en destino si no existen
+        # Crear tablas si no existen
         Base.metadata.create_all(engine_dest)
+
+        stats = {}
 
         for ModelClass in MODELS_TO_SYNC:
             table_name = ModelClass.__tablename__
             
-            # A. Leer de Neon
+            # 1. Obtener todos los registros del Origen
             source_data = session_source.query(ModelClass).all()
-            count = len(source_data)
-            
-            if count == 0:
-                # logger.info(f"   ⏩ Tabla '{table_name}' vacía. Saltando.")
-                continue
+            source_ids = []
 
-            # B. Limpiar Supabase (Borrado total de la tabla)
-            session_dest.query(ModelClass).delete()
+            count_updated = 0
             
-            # C. Copiar Datos (Desvincular -> Vincular)
+            # 2. PROCESO DE MERGE (Insertar o Actualizar)
             for obj in source_data:
-                session_source.expunge(obj) # Desconectar de sesión A
-                make_transient(obj)         # Hacerlo "nuevo"
-                session_dest.add(obj)       # Conectar a sesión B
+                # Guardamos el ID para saber luego qué borrar
+                # Asumimos que tu PK se llama 'id', ajusta si es 'user_id' etc.
+                if hasattr(obj, 'id'): 
+                    source_ids.append(obj.id)
+                
+                # Desvinculamos el objeto de la sesión origen para no confundir a SQLAlchemy
+                session_source.expunge(obj)
+                
+                # --- LA MAGIA ESTÁ AQUÍ: MERGE ---
+                # merge busca por Primary Key en destino:
+                # - Si existe: actualiza los campos.
+                # - Si no existe: crea uno nuevo.
+                session_dest.merge(obj)
+                count_updated += 1
+            
+            # 3. PROCESO DE LIMPIEZA (Borrar lo que ya no existe en origen)
+            # Si quieres un espejo exacto, descomenta el bloque siguiente.
+            # Si solo quieres guardar histórico y nunca borrar del respaldo, déjalo comentado.
+            
+            deleted_count = 0
+            if hasattr(ModelClass, 'id') and source_ids:
+                 # Borrar registros en Destino cuyo ID no esté en la lista de Origen
+                 delete_q = session_dest.query(ModelClass).filter(
+                     ~ModelClass.id.in_(source_ids)
+                 )
+                 deleted_count = delete_q.delete(synchronize_session=False)
+            elif hasattr(ModelClass, 'id') and not source_ids:
+                 # Si origen está vacío, borrar todo en destino
+                 deleted_count = session_dest.query(ModelClass).delete()
 
-            # D. Guardar cambios
+            # 4. Guardar cambios por tabla
             session_dest.commit()
-            logger.info(f"   ✅ Tabla '{table_name}': {count} registros copiados.")
-            stats[table_name] = count
+            
+            msg = f"✅ '{table_name}': {count_updated} procesados (Add/Upd)"
+            if deleted_count > 0:
+                msg += f" | 🗑️ {deleted_count} eliminados (Obsoletos)"
+            
+            logger.info(msg)
+            stats[table_name] = {"upsert": count_updated, "deleted": deleted_count}
 
-        final_msg = "✨ Respaldo completado exitosamente."
+        final_msg = "✨ Sincronización inteligente completada."
         logger.info(final_msg)
         
         return {"success": True, "stats": stats, "msg": final_msg}
@@ -104,7 +123,7 @@ def backup_entire_database():
     except Exception as e:
         if session_dest:
             session_dest.rollback()
-        logger.error(f"❌ Error crítico en respaldo: {e}")
+        logger.error(f"❌ Error en sync: {e}")
         return {"success": False, "error": str(e)}
         
     finally:

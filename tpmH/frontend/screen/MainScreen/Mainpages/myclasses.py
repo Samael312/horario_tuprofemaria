@@ -185,37 +185,54 @@ def my_classes():
     
     POSITIVE_STATUS = ["Libre", "Available", "Disponible"]
 
-      # --- LÓGICA DE REAGENDAMIENTO ---
-    async def reschedule_class(c_id, new_prof_date, new_prof_time_int, new_student_date, new_student_time_int, dialog):
+   # --- LÓGICA DE REAGENDAMIENTO (VERSIÓN ESTUDIANTE) ---
+    async def reschedule_class(c_id, new_student_date, new_student_time_int, dialog):
         session = PostgresSession()
         try:
             cls = session.query(AsignedClasses).filter(AsignedClasses.id == c_id).first()
             if cls:
-                # Guardar valores viejos para buscar en Backup
+                # 1. Guardar valores viejos para Backup y Cálculos
                 old_date = cls.date
                 old_start = cls.start_time
+                old_date_prof = cls.date_prof
+                old_start_prof = cls.start_prof_time
                 username = cls.username
-
-                # Calcular Duración y End Times
                 duration = int(cls.duration) if cls.duration else 60
-                
-                # Calcular end_time Estudiante
-                s_h = new_student_time_int // 100
-                s_m = new_student_time_int % 100
-                s_start_dt = datetime.strptime(f"{new_student_date} {s_h}:{s_m}", "%Y-%m-%d %H:%M")
-                s_end_dt = s_start_dt + timedelta(minutes=duration)
-                new_student_end_int = int(s_end_dt.strftime("%H%M"))
-                
-                # Calcular end_time Profesor
-                p_h = new_prof_time_int // 100
-                p_m = new_prof_time_int % 100
-                p_start_dt = datetime.strptime(f"{new_prof_date} {p_h}:{p_m}", "%Y-%m-%d %H:%M")
-                p_end_dt = p_start_dt + timedelta(minutes=duration)
-                new_prof_end_int = int(p_end_dt.strftime("%H%M"))
 
-                # Nombre del día (basado en fecha estudiante)
-                dt_obj = datetime.strptime(new_student_date, '%Y-%m-%d')
-                new_day_name = days_of_week[dt_obj.weekday()]
+                # 2. CALCULAR LA DIFERENCIA HORARIA (Time Delta)
+                # Necesitamos saber la diferencia entre el horario del estudiante y el del profesor
+                # para proyectar el nuevo horario del profesor automáticamente.
+                
+                # Convertimos horario actual a objetos datetime
+                s_curr_str = str(old_start).zfill(4)
+                curr_stu_dt = datetime.strptime(f"{old_date} {s_curr_str[:2]}:{s_curr_str[2:]}", "%Y-%m-%d %H:%M")
+                
+                p_curr_str = str(old_start_prof).zfill(4)
+                curr_prof_dt = datetime.strptime(f"{old_date_prof} {p_curr_str[:2]}:{p_curr_str[2:]}", "%Y-%m-%d %H:%M")
+                
+                # Calculamos el desplazamiento (Offset)
+                time_offset = curr_prof_dt - curr_stu_dt
+
+                # 3. PROYECTAR NUEVOS HORARIOS
+                # Creamos el datetime objetivo del estudiante
+                s_new_str = str(new_student_time_int).zfill(4)
+                new_stu_dt = datetime.strptime(f"{new_student_date} {s_new_str[:2]}:{s_new_str[2:]}", "%Y-%m-%d %H:%M")
+                
+                # Calculamos el fin del estudiante
+                new_stu_end_dt = new_stu_dt + timedelta(minutes=duration)
+                new_student_end_int = int(new_stu_end_dt.strftime("%H%M"))
+
+                # Calculamos el nuevo inicio y fin del Profesor (Aplicando el offset)
+                new_prof_dt = new_stu_dt + time_offset
+                new_prof_end_dt = new_prof_dt + timedelta(minutes=duration)
+
+                # Extraemos valores para la BD
+                new_prof_date = new_prof_dt.strftime("%Y-%m-%d")
+                new_prof_time_int = int(new_prof_dt.strftime("%H%M"))
+                new_prof_end_int = int(new_prof_end_dt.strftime("%H%M"))
+
+                # Nombre del día
+                new_day_name = days_of_week[new_stu_dt.weekday()]
 
                 # 4. Actualizar en BD (Postgres)
                 cls.date = new_student_date
@@ -249,15 +266,16 @@ def my_classes():
                         bk_sess.commit()
                     bk_sess.close()
                 except Exception as e:
-                    logger.error(f"Error backup reschedule: {e}")
+                    logger.error(f"Error backup reschedule student: {e}")
 
                 ui.notify(f"Clase reagendada correctamente.", type='positive')
-                dialog.close()
-                refresh_ui()
+                if dialog: dialog.close()
+                refresh_ui() # Asegúrate de tener acceso a esta función o pásala como callback
             else:
                 ui.notify("Clase no encontrada", type='negative')
         except Exception as e:
             ui.notify(f"Error al reagendar: {e}", type='negative')
+            logger.error(f"Error student reschedule: {e}")
         finally:
             session.close()
 
@@ -274,13 +292,10 @@ def my_classes():
             # Content
             with ui.column().classes('w-full p-6 gap-4'):
                 
-                # 1. Selector de Fecha (Fecha Profesora) y Botón de Búsqueda
-                # Usamos la fecha actual de la clase (prof) como default
+                # 1. Selector de Fecha
                 default_date = c.date_prof or c.date
                 
-                # Fila para el Input y el Botón
                 with ui.row().classes('w-full items-start gap-4'):
-                    
                     # INPUT DE FECHA
                     with ui.input('Fecha (Tu Horario)', value=default_date).props('outlined dense mask="####-##-##"').classes('flex-1') as date_input:
                         with ui.menu().props('no-parent-event') as menu:
@@ -289,7 +304,6 @@ def my_classes():
                             ui.icon('event').classes('cursor-pointer text-slate-500 hover:text-slate-700').on('click', menu.open)
                     
                     # BOTÓN DE BÚSQUEDA
-                    # Botón más elegante con estilo mejorado
                     search_btn = ui.button('Buscar Disponibilidad', icon='search') \
                         .props('unelevated color=blue-600') \
                         .classes('h-[40px] px-6 rounded-lg shadow-sm hover:shadow-md transition-shadow font-bold tracking-wide')
@@ -302,28 +316,22 @@ def my_classes():
                     session = PostgresSession()
                     slots_data = []
                     try:
-                        # 0. Normalización de fecha para robustez
                         if not date_str: return []
                         
                         try:
-                            # Reemplazar barras por guiones para estandarizar
                             d_clean = date_str.replace('/', '-')
-                            
-                            # Intentar ISO (YYYY-MM-DD)
                             dt = datetime.strptime(d_clean, '%Y-%m-%d')
                         except ValueError:
                             try:
-                                # Intentar Formato Europeo/Latino (DD-MM-YYYY)
                                 dt = datetime.strptime(d_clean, '%d-%m-%Y')
                             except ValueError:
                                 logger.error(f"Formato de fecha inválido recibido: {date_str}")
                                 return []
                         
-                        # Fecha estandarizada para consultas DB
                         query_date = dt.strftime('%Y-%m-%d')
                         day_name = days_of_week[dt.weekday()]
                         
-                        # 1. Disponibilidad Profesora (Teacher Time) - Usando query_date
+                        # 1. Disponibilidad Profesora
                         rules = session.query(ScheduleProfEsp).filter_by(date=query_date).all()
                         if not rules:
                             rules = session.query(ScheduleProf).filter_by(days=day_name).all()
@@ -334,11 +342,11 @@ def my_classes():
                             if status in POSITIVE_STATUS:
                                 avail_ranges.append((r.start_time, r.end_time))
                         
-                        # 2. Ocupado Profesora (Busy Teacher Time) - Usando query_date
+                        # 2. Ocupado Profesora
                         busy = session.query(AsignedClasses).filter(
                             AsignedClasses.date_prof == query_date,
                             AsignedClasses.status != 'Cancelled',
-                            AsignedClasses.id != c.id # Excluir la clase actual para permitir moverla al mismo día
+                            AsignedClasses.id != c.id 
                         ).all()
                         busy_ranges = [(b.start_prof_time, b.end_prof_time) for b in busy if b.start_prof_time]
 
@@ -346,17 +354,13 @@ def my_classes():
                         user = session.query(User).filter(User.username == c.username).first()
                         student_tz_str = user.time_zone if user and user.time_zone else 'UTC'
                         
-                        # Obtener Zona de la Profesora (Admin)
                         admin_user = session.query(User).filter(User.username == admin_username).first()
                         teacher_tz_str = admin_user.time_zone if admin_user and admin_user.time_zone else 'Europe/Madrid'
 
-                        # Generar Slots cada 30 min (o duración clase)
+                        # Generar Slots
                         step = 60
                         duration = int(c.duration) if c.duration else 60
                         
-                        # --- CÁLCULO DE SLOTS CORREGIDO (USANDO MINUTOS) ---
-                        
-                        # Helpers para conversión
                         def to_minutes(hhmm):
                             return (hhmm // 100) * 60 + (hhmm % 100)
                         
@@ -365,17 +369,14 @@ def my_classes():
                             m = minutes % 60
                             return (h * 100) + m
 
-                        # Convertir ocupado a minutos
                         busy_ranges_min = [(to_minutes(bs), to_minutes(be)) for bs, be in busy_ranges]
 
                         valid_slots = []
                         for start, end in avail_ranges:
-                            # Iterar en minutos para evitar horas inválidas (ej 16:60)
                             curr_m = to_minutes(start)
                             end_m = to_minutes(end)
                             
                             while curr_m + duration <= end_m:
-                                # Check busy (en minutos)
                                 is_busy = False
                                 s_end_m = curr_m + duration
                                 
@@ -385,22 +386,18 @@ def my_classes():
                                         break
                                 
                                 if not is_busy:
-                                    # Convertir de nuevo a HHMM int para el resto de la lógica
                                     valid_slots.append(to_hhmm_int(curr_m))
                                 
                                 curr_m += step
                         
-                        # Procesar para frontend
                         unique_slots = sorted(list(set(valid_slots)))
                         
                         for slot in unique_slots:
-                            # Teacher Info
                             t_h, t_m = slot // 100, slot % 100
                             t_str = f"{str(t_h).zfill(2)}:{str(t_m).zfill(2)}"
                             
-                            # Student Info (Cálculo)
                             try:
-                                prof_tz = ZoneInfo(teacher_tz_str) # Usamos zona de DB
+                                prof_tz = ZoneInfo(teacher_tz_str)
                                 stud_tz = ZoneInfo(student_tz_str)
                                 
                                 dt_prof = datetime.strptime(f"{query_date} {t_str}", "%Y-%m-%d %H:%M")
@@ -413,7 +410,6 @@ def my_classes():
                                 s_time_int = int(dt_stud.strftime("%H%M"))
                                 s_weekday = days_of_week[dt_stud.weekday()]
                                 
-                                # Check Prefs (Student Time)
                                 prefs = session.query(SchedulePref).filter(
                                     SchedulePref.username == c.username,
                                     SchedulePref.days == s_weekday
@@ -434,16 +430,7 @@ def my_classes():
                                 })
                                 
                             except Exception as ex:
-                                logger.error(f"Timezone error: {ex} (Slot: {slot})")
-                                # Fallback sin conversión
-                                slots_data.append({
-                                    't_time_int': slot,
-                                    't_time_str': t_str,
-                                    's_time_str': "Err",
-                                    's_date_str': query_date,
-                                    's_time_int': slot,
-                                    'is_preferred': False
-                                })
+                                logger.error(f"Timezone error: {ex}")
 
                     except Exception as e:
                         logger.error(f"Error getting slots: {e}")
@@ -455,64 +442,47 @@ def my_classes():
                     slots_container.clear()
                     if not date_input.value: return
                     
-                    # Obtener username del admin logueado para sacar su zona horaria
                     current_admin = app.storage.user.get("username")
 
                     with slots_container:
                         ui.spinner('dots').classes('self-center text-slate-400')
                         
-                        # CORRECCIÓN: Usar asyncio.get_running_loop() en lugar de app.loop
                         loop = asyncio.get_running_loop()
                         data = await loop.run_in_executor(None, get_slots_data, date_input.value, current_admin)
                         
                         slots_container.clear()
 
                         if not data:
-                            ui.label('No hay horarios disponibles para esta fecha.').classes('text-sm text-slate-400 italic')
+                            ui.label('No hay horarios disponibles.').classes('text-sm text-slate-400 italic')
                             return
 
                         with ui.grid().classes('grid-cols-4 gap-2 w-full max-h-60 overflow-y-auto pr-2'):
                             for slot in data:
-                                # Colores
                                 if slot['is_preferred']:
-                                    btn_color = 'purple-600'
-                                    btn_bg = 'bg-purple-600'
-                                    text_col = 'white'
+                                    btn_cls = 'bg-purple-600 text-white hover:bg-purple-700'
                                 else:
-                                    btn_color = 'slate-200'
-                                    btn_bg = 'bg-slate-100'
-                                    text_col = 'slate-700'
+                                    btn_cls = 'bg-slate-100 text-slate-700 hover:bg-slate-200'
 
                                 # Botón Slot
                                 btn = ui.button(slot['t_time_str'], on_click=lambda s=slot: confirm_reschedule(s)) \
-                                    .props(f'unelevated color=None') \
-                                    .classes(f'{btn_bg} text-{text_col} font-bold rounded-lg hover:bg-slate-300 transition-colors')
+                                    .props('unelevated').classes(f'{btn_cls} font-bold rounded-lg transition-colors')
                                 
-                                # Tooltip con hora alumno
                                 with btn:
                                     ui.tooltip(f"Alumno: {slot['s_time_str']} ({slot['s_date_str']})").classes('bg-slate-800 text-xs')
 
+                # --- CORRECCIÓN AQUÍ ---
                 async def confirm_reschedule(slot_data):
-                    # Pasamos todos los datos calculados para evitar recálculos y errores
+                    # Extraemos los datos del diccionario 'slot_data'
                     await reschedule_class(
-                        c.id, 
-                        date_input.value, # Teacher Date
-                        slot_data['t_time_int'], # Teacher Time
-                        slot_data['s_date_str'], # Student Date
-                        slot_data['s_time_int'], # Student Time
-                        d
+                        c.id,                       # 1. ID
+                        slot_data['s_date_str'],    # 2. Fecha Alumno (sacada del slot)
+                        slot_data['s_time_int'],    # 3. Hora Alumno (sacada del slot)
+                        d                           # 4. Diálogo
                     )
 
                 # Init & Event Listeners
-                
-                # Botón Buscar
                 search_btn.on('click', render_slots)
-                
-                # Date Picker: Solo cerrar menú, NO buscar automáticamente
                 d_picker.on('change', menu.close)
-
-                # Carga Inicial: OPCIONAL. Comenta la siguiente línea si quieres que la lista empiece vacía.
-                # render_slots() 
 
         d.open()
 
