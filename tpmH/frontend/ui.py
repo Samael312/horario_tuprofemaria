@@ -1,8 +1,8 @@
 # ui/ui.py
 from nicegui import ui, app
-from frontend.screen.login_screen import setup_auth_system
+from frontend.screen.FirstPages.login_screen import setup_auth_system
 from frontend.screen.MainScreen.mainscreen import create_main_screen
-from frontend.screen.signup_screen import create_signup_screen
+from frontend.screen.FirstPages.signup_screen import create_signup_screen
 from frontend.screen.MainScreen.Subpages.reset_screen import reset_password_screen
 from frontend.screen.MainScreen.Mainpages.profile import profile
 from frontend.screen.MainScreen.Mainpages.myclasses import my_classes
@@ -19,14 +19,14 @@ from frontend.screen.MainAdminScreen.Subpages.edit_student import students_edit
 from frontend.screen.MainAdminScreen.Subpages.editAdminProfile import profileA_edit
 from frontend.screen.MainAdminScreen.Subpages.teacher_edit import teacherAdmin
 from frontend.screen.MainScreen.Mainpages.teacher import teacher_profile_view
-from frontend.screen.mainpage import render_landing_page
+from frontend.screen.FirstPages.mainpage import render_landing_page
 from frontend.screen.MainAdminScreen.Mainpages.materialAdmin import materials_page
 from frontend.screen.MainAdminScreen.Mainpages.workAdmin import homework_page
 from frontend.screen.MainScreen.Mainpages.material import student_materials_page
 from frontend.screen.MainScreen.Mainpages.work import student_homework_page
-from frontend.screen.adv_method import adv_method
-from frontend.screen.plans_screen import plan_screen
-from frontend.screen.reset_pass import reset_screen
+from frontend.screen.FirstPages.adv_method import adv_method
+from frontend.screen.FirstPages.plans_screen import plan_screen
+from frontend.screen.FirstPages.reset_pass import reset_screen
 
 def init_ui():
     """Puente entre las pantallas de la app."""
