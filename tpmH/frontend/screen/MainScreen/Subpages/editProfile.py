@@ -374,6 +374,7 @@ def profile_edit():
                                         seen_intervals.add(unique_key)
                                 except ValueError: pass
 
+                notification = None  
                 # --- Ejecutar Worker ---
                 try:
                     notification = ui.notify("Guardando cambios...", type='ongoing', timeout=5000, icon='cloud_upload')
@@ -389,7 +390,8 @@ def profile_edit():
                     ui.notify(f"Error al guardar: {e}", type='negative', close_button=True)
                 finally:
                     if 'notification' in locals():
-                        notification.dismiss()
+                        if notification:
+                            notification.dismiss()
 
             # --- BOTONES DE ACCIÓN ---
             with ui.row().classes('w-full justify-center gap-6 pt-6 pb-12'):

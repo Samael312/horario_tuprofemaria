@@ -413,6 +413,7 @@ def scheduleMaker():
         all_slots_data = get_available_slots(state['date'], current_duration)
         pref_ranges = get_user_preferred_ranges(username, state['date'])
         
+
         if not all_slots_data:
             with ui.column().classes('w-full items-center justify-center py-16 bg-white rounded-xl border border-dashed border-slate-300'):
                 ui.icon('event_busy', size='4xl', color='slate-300')
@@ -420,6 +421,9 @@ def scheduleMaker():
             return
 
         with ui.column().classes('w-full gap-4'):
+
+           
+
             # Leyenda si hay preferentes
             has_prefs = any((item['status'] == 'free' and is_in_user_range(item['time'], pref_ranges)) for item in all_slots_data)
             if has_prefs:
@@ -445,16 +449,32 @@ def scheduleMaker():
                     
                     # 1. HORA PASADA (Gris muy claro, deshabilitado)
                     if is_past_hour:
-                        btn_color_class = "!bg-gray-600 hover:bg-gray-700 text-white border-gray-800 cursor-not-allowed"
-                        btn_props = "flat"
+                        btn_color_class = (
+                        "!bg-slate-100 "           # Fondo gris muy pálido
+                        "!text-slate-300 "          # Texto gris medio
+                        "border border-slate-200 " # Borde muy sutil de 1px (plano)
+                        "cursor-not-allowed "      # Cursor de prohibido
+                        "hover:!bg-slate-100"      # Sin efecto hover
+                    ) 
+                        btn_props = "unelevated"
                         icon_name = "schedule"
-                        click_handler = None
+
+                        # Al hacer click, solo notifica
+                        def notify_busy():
+                            ui.notify('Horario ya pasado', type='warning', icon='clock', position='center')
+                        click_handler = notify_busy
                     
                     # 2. OCUPADO (Gris sólido, "No disponible")
                     elif status == 'busy':
                         # Gris medio, sin relieve (flat), cursor de prohibido
-                        btn_color_class = "!bg-gray-600 hover:bg-gray-700 text-white border-gray-800 cursor-not-allowed" 
-                        btn_props = "flat"
+                        btn_color_class = (
+                        "!bg-slate-100 "           # Fondo gris muy pálido
+                        "!text-slate-300 "          # Texto gris medio
+                        "border border-slate-200 " # Borde muy sutil de 1px (plano)
+                        "cursor-not-allowed "      # Cursor de prohibido
+                        "hover:!bg-slate-100"      # Sin efecto hover
+                    ) 
+                        btn_props = "unelevated"
                         icon_name = "lock"
                         
                         # Al hacer click, solo notifica
@@ -580,7 +600,33 @@ def scheduleMaker():
         session.close()
         
         percent = min(used_curr/limit, 1.0) if limit > 0 else 0
-        
+
+        # Contenedor de la tarjeta con degradado sutil y borde suave
+        with ui.card().classes('w-full rounded-2xl p-1 bg-gradient-to-br from-white to-pink-50 border border-pink-100 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group'):
+            with ui.row().classes('items-center no-wrap px-4 py-3 gap-4'):
+                
+                # 1. AVATAR (Con anillo y efecto de brillo)
+                with ui.element('div').classes('relative'):
+                    # El contenedor de la imagen
+                    with ui.element('div').classes('w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-rose-400 to-purple-400 shadow-lg group-hover:scale-105 transition-transform'):
+                        with ui.element('div').classes('w-full h-full rounded-full bg-white overflow-hidden p-0.5'):
+                            ui.image('/static/icon/logo.png').classes('w-full h-full object-cover rounded-full')
+                    
+                    # Indicador de "En línea" (Punto verde)
+                    ui.element('div').classes('absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full')
+
+                # 2. TEXTO (Mejor estructurado)
+                with ui.column().classes('gap-0.5 flex-1'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.label('¿Necesitas ayuda?').classes('text-sm font-bold text-slate-800')
+                        # Pequeña etiqueta "AI"
+                        ui.label('AI').classes('text-[10px] font-black bg-rose-100 text-rose-600 px-1.5 rounded')
+                    
+                    ui.label('Pregúntale a Chipi AI si tienes alguna duda sobre como crear tu horario.').classes('text-xs text-slate-500 leading-tight')
+
+                # 3. ICONO DE ACCIÓN (Flecha sutil)
+                ui.icon('chat_bubble_outline', size='sm').classes('text-rose-300 group-hover:text-rose-500 transition-colors duration-100')
+            
         with ui.card().classes('w-full p-5 rounded-2xl bg-white shadow-sm border border-slate-100 gap-4'):
             with ui.column().classes('w-full gap-2'):
                 ui.label("Plan Actual (Mes)").classes('text-xs font-bold text-slate-400 uppercase tracking-widest')
@@ -600,6 +646,31 @@ def scheduleMaker():
                     with ui.column().classes('gap-0'):
                         ui.label(f"{total_lifetime} Clases").classes('font-bold text-slate-700')
                         ui.label("Agendadas en total").classes('text-[10px] text-slate-400')
+        
+
+            # === ZONA DE INFORMACIÓN (Estilo Moderno/Premium) ===
+            user_tz = get_user_timezone()
+
+        with ui.row().classes('w-full p-3 rounded-2xl bg-gradient-to-br from-white to-gray-50 border border-blue-100 shadow-sm items-center gap-3'):
+                
+                # 1. ICONO (Estilo "Glass" azulado)
+                # Contenedor con fondo suave y anillo sutil
+                with ui.element('div').classes('p-2.5 bg-blue-50 rounded-xl flex items-center justify-center ring-1 ring-blue-100'):
+                    ui.icon('public', color='gray-600', size='xs')
+                
+                # 2. TEXTO
+                with ui.column().classes('gap-0.5 flex-1'):
+                    # Cabecera con Título y la Zona Horaria destacada
+                    with ui.row().classes('items-center gap-2'):
+                        ui.label('Sincronización Activa').classes('text-xs font-bold text-blue-900 uppercase tracking-wide')
+                        # Badge para la zona horaria
+                        ui.label(user_tz).classes('text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-md border border-blue-200')
+
+                    # Cuerpo del mensaje (Markdown limpio)
+                    ui.markdown(
+                        "Ves la **disponibilidad real de la profesora** convertida automáticamente a tu hora local. "
+                        "<span class='text-blue-500 italic'>No necesitas calcular diferencias.</span>"
+                    ).classes('text-xs text-slate-600 leading-snug')
 
     # CORRECCIÓN 2: Lógica de dashboard optimizada para feedback visual inmediato
     async def update_dashboard():
@@ -668,7 +739,7 @@ def scheduleMaker():
                             ui.label().bind_text_from(state, 'date', 
                                 backward=lambda d: datetime.strptime(d, '%Y-%m-%d').strftime('%A, %d de %B') if d else "Cargando..."
                             ).classes(f'{sub_color} font-medium')
-            
+                          
             with ui.row().classes('items-center gap-4'):
                 if not state['is_trial']:
                     ui.toggle({30: '30 min', 60: '1 Hora'}, value=60).bind_value(state, 'duration') \

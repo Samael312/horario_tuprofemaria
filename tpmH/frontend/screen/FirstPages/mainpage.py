@@ -46,6 +46,13 @@ TRANSLATIONS = {
         'reviews_tag': 'Lo que dicen mis alumnos',
         'reviews_title': 'Historias de Éxito',
         'reviews_subtitle': 'Personas reales, resultados reales.',
+        'chipi_tag': 'Asistente IA 24/7',
+        'chipi_title': 'Conoce a Chipi',
+        'chipi_subtitle': 'Tu compañero de aprendizaje inteligente.',
+        'chipi_desc': '¿Tienes dudas sobre los precios? ¿No sabes qué plan elegir? ¿No sabes cómo agendar tus clases? Chipi está entrenado para guiarte, responder preguntas y ayudarte en toda tu travesía. ¡Siempre disponible, sin esperas!',
+        'chipi_btn': 'Hablar con Chipi',
+        'chipi_demo_1': 'Hola, necesito tu ayuda.',
+        'chipi_demo_2': '¡Claro! 🤖 Estoy aquí para ayudarte a encontrar tu plan ideal.',
     },
     'en': {
         'nav_about': 'About me', 'nav_video': 'Video', 'nav_plans': 'Plans', 'nav_contact': 'Contact',
@@ -67,6 +74,13 @@ TRANSLATIONS = {
         'reviews_tag': 'What my students say',
         'reviews_title': 'Success Stories',
         'reviews_subtitle': 'Real people, real results.',
+        'chipi_tag': 'AI Assistant 24/7',
+        'chipi_title': 'Meet Chipi',
+        'chipi_subtitle': 'Your smart learning companion.',
+        'chipi_desc': 'Doubts about pricing? Unsure which plan to pick? Chipi is trained to guide you, answer questions, and help you take the first step. Always available, no waiting!',
+        'chipi_btn': 'Chat with Chipi',
+        'chipi_demo_1': 'Hi, I need help with English.',
+        'chipi_demo_2': 'Sure! 🤖 I\'m here to help you find your perfect plan.',
     }
 }
 
@@ -110,7 +124,7 @@ def render_landing_page():
             
             html, body {
                 font-family: 'Inter', sans-serif;
-                background-color: #F8FAFC;
+                background-color: #FFFFFF;
                 margin: 0;
                 padding: 0;
                 width: 100%;
@@ -193,6 +207,45 @@ def render_landing_page():
                 user-select: none;
                 -webkit-user-select: none;
             }
+                     
+            /* --- ESTILOS ZONA VIDEO --- */
+            
+            /* Fondo de rejilla muy sutil sobre el azul */
+            .bg-grid-slate {
+                background-size: 40px 40px;
+                background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                                  linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+                mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+            }
+
+            /* Panel de Cristal Oscuro (Dark Glassmorphism) */
+            .glass-panel-dark {
+                background: rgba(15, 23, 42, 0.6); /* Azul muy oscuro semitransparente */
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                border: 1px solid rgba(255, 255, 255, 0.08); /* Borde muy fino */
+                box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.7);
+            }
+
+            /* Animación suave de brillo (Breathing effect) */
+            .animate-glow {
+                animation: soft-pulse 4s infinite ease-in-out;
+            }
+            @keyframes soft-pulse {
+                0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); border-color: rgba(255,255,255,0.1); }
+                50% { box-shadow: 0 0 30px -5px rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.3); }
+                100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); border-color: rgba(255,255,255,0.1); }
+            }
+
+            /* Luces de fondo flotantes */
+            .ambient-blob {
+                filter: blur(90px);
+                opacity: 0.5;
+                animation: float-blob 10s infinite alternate cubic-bezier(0.45, 0.05, 0.55, 0.95);
+            }
+            @keyframes float-blob {
+                0% { transform: translate(0, 0) scale(1); }
+                100% { transform: translate(30px, -30px) scale(1.1); }
             }
         </style>
         
@@ -211,6 +264,7 @@ def render_landing_page():
                     document.querySelectorAll('.scroll-hidden').forEach(el => observer.observe(el));
                 }, 100);
             });
+            
         </script>
     ''')
 
@@ -251,14 +305,14 @@ def render_landing_page():
                     ui.link(t[key], anchor).classes('text-sm font-semibold text-slate-600 hover:text-rose-600 transition-colors duration-300 no-underline')
             
             with ui.row().classes('items-center gap-3'):
-                logo_img = '/static/icon/logo.png' 
+                logo_img = '/static/icon/logo.png'
                 ui.button(t['btn_login'], on_click=lambda: ui.navigate.to('/login')) \
                     .props('flat text-color=slate-700')\
                     .classes('rounded-full px-6 font-bold shadow-lg shadow-gray-200 hover:shadow-gray-300 hover:bg-white-700 hover:-translate-y-0.5 transition-all text-sm')
                 ui.button(t['btn_signup'], on_click=lambda: ui.navigate.to('/method')) \
                     .props('unelevated color=rose-600 text-color=white') \
                     .classes('rounded-full px-6 font-bold shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:bg-rose-700 hover:-translate-y-0.5 transition-all text-sm')
-                ui.image(logo_img).classes('w-10 h-10 rounded-full border-2 border-rose-600 shadow-md')
+                ui.image(logo_img).classes('w-10 h-10 rounded-full border-2 border-rose-600 shadow-md').classes('rounded-full border-4 border-white shadow-2xl overflow-hidden relative ring-1 ring-rose-300 bg-white')
 
     # 3. BODY CONTENT
     @ui.refreshable
@@ -288,23 +342,56 @@ def render_landing_page():
                     ui.button(t['btn_start'], icon='rocket_launch', on_click=lambda: ui.navigate.to('/planScreen')).props('unelevated color=slate-900 text-color=white size=lg').classes('rounded-xl shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 font-bold px-8 py-3')
                     ui.button(t['btn_view_plans'], icon='visibility', on_click=lambda: ui.run_javascript("document.getElementById('plans').scrollIntoView({behavior: 'smooth'})")).props('outline color=slate-900 size=lg').classes('rounded-xl border-2 hover:bg-white/50 transition-colors font-bold px-8 py-3')
 
-        # --- VIDEO ---
-        with ui.element('section').classes('w-full py-32 bg-slate-900/95 text-white relative overflow-hidden backdrop-blur-sm') as video_sec:
+        # --- VIDEO SECTION (Estilo Dark Moderno) ---
+        with ui.element('section').classes('w-full py-32 relative overflow-hidden flex items-center justify-center bg-slate-900') as video_sec:
             video_sec.props('id=video')
-            ui.element('div').classes('absolute inset-0 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] opacity-5')
-            ui.element('div').classes('absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-white/10 to-transparent opacity-10')
-            
-            with ui.column().classes('max-w-5xl mx-auto px-6 w-full items-center gap-16 z-10'):
-                with ui.column().classes('text-center gap-4 scroll-hidden'):
-                    ui.label(t['video_tag']).classes('text-rose-400 font-bold tracking-widest uppercase text-sm')
-                    ui.label(t['video_title']).classes('text-4xl md:text-5xl font-bold tracking-tight')
-                    ui.label(t['video_desc']).classes('text-slate-400 text-lg max-w-xl mx-auto')
-                
-                with ui.element('div').classes('w-full aspect-video bg-black rounded-3xl shadow-2xl border border-slate-700 overflow-hidden relative group scroll-hidden delay-200 hover:border-rose-500/30 transition-colors duration-500'):
-                    ui.video('/static/resources/Presentacion%20preply%20chu.mp4').classes('w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-500')
 
+            # 1. FONDO AMBIENTAL (Capas estáticas y animadas)
+            with ui.element('div').classes('absolute inset-0 pointer-events-none'):
+                # Gradiente base azul oscuro
+                ui.element('div').classes('absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-900 to-[#0B1120]')
+                # Rejilla sutil
+                ui.element('div').classes('absolute inset-0 bg-grid-slate')
+                
+                # Orbes de luz (Cyan y Rosa) - Dan el toque "Tech"
+                ui.element('div').classes('absolute top-0 right-0 w-[500px] h-[500px] bg-rose-900/20 rounded-full ambient-blob').style('top: -10%; right: -10%;')
+                ui.element('div').classes('absolute bottom-0 left-0 w-[500px] h-[500px] bg-cyan-900/20 rounded-full ambient-blob').style('bottom: -10%; left: -10%; animation-delay: -5s;')
+
+            # 2. CONTENIDO (Centrado y Elegante)
+            with ui.row().classes('max-w-7xl mx-auto px-6 w-full items-center justify-between gap-16 relative z-10'):
+                
+                # --- LADO IZQUIERDO: TEXTO ---
+                with ui.column().classes('w-full lg:w-5/12 gap-8 scroll-hidden'):
+                    with ui.column().classes('gap-2'):
+                        # Etiqueta pequeña
+                        ui.label(t['video_tag']).classes('text-rose-400 font-bold tracking-widest uppercase text-xs mb-2')
+                        # Título
+                        ui.label(t['video_title']).classes('text-4xl md:text-5xl font-bold text-white leading-tight')
+                        # Línea decorativa
+                        ui.element('div').classes('w-20 h-1 bg-gradient-to-r from-rose-500 to-transparent rounded-full my-2')
+                        # Descripción
+                        ui.label(t['video_desc']).classes('text-slate-400 text-lg leading-relaxed font-light')
+
+                # --- LADO DERECHO: VIDEO CARD ---
+                with ui.column().classes('w-full lg:w-6/12 scroll-hidden').style('transition-delay: 200ms'):
+                    # Tarjeta contenedora con efecto Glass Dark y borde brillante suave (animate-glow)
+                    with ui.card().classes('w-full glass-panel-dark rounded-2xl p-1.5 animate-glow'):
+                        
+                        # Barra superior estilo ventana (Mac Dark Mode)
+                        with ui.row().classes('w-full px-4 py-3 items-center gap-2 border-b border-white/5 bg-white/5 rounded-t-xl'):
+                            with ui.row().classes('gap-2'):
+                                ui.element('div').classes('w-3 h-3 rounded-full bg-red-500/80')
+                                ui.element('div').classes('w-3 h-3 rounded-full bg-yellow-500/80')
+                                ui.element('div').classes('w-3 h-3 rounded-full bg-green-500/80')
+                            ui.label('Conoce_a_TuprofeMaria.mp4').classes('ml-auto text-xs text-slate-500 font-mono tracking-wider')
+
+                        # Video Container
+                        with ui.element('div').classes('w-full aspect-video bg-black relative overflow-hidden rounded-b-xl'):
+                             # El Video
+                             ui.video('/static/resources/Presentacion%20preply%20chu.mp4').classes('w-full h-full object-cover')
+        
         # --- ABOUT ME ---
-        with ui.element('section').classes('w-full py-32 bg-white relative') as about_sec:
+        with ui.element('section').classes('w-full py-32 relative bg-white') as about_sec:
             about_sec.props('id=about')
             ui.element('div').classes('absolute right-0 bottom-0 w-1/3 h-full bg-slate-50/50 -skew-x-12 translate-x-20 z-0')
 
@@ -340,8 +427,77 @@ def render_landing_page():
                             ui.label('Online').classes('text-4xl font-extrabold text-slate-900')
                             ui.label(t['stat_online']).classes('text-sm font-bold text-slate-400 uppercase tracking-wider')
 
+        # --- SECCIÓN CHIPI AI (NUEVA) ---
+        with ui.element('section').classes('w-full py-32 relative bg-white') as chipi_sec:
+            # Fondo decorativo tecnológico sutil
+            with ui.element('div').classes('absolute inset-0 pointer-events-none'):
+                # Círculo gradiente animado
+                ui.element('div').classes('absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40rem] h-[40rem] bg-gradient-to-tr from-white-200/40 to-rose-200/40 rounded-full mix-blend-multiply filter blur-3xl opacity-60 blob-motion')
+                # Grid pattern muy sutil
+                ui.element('div').classes('absolute inset-0 bg-[url("https://www.transparenttextures.com/patterns/graphy.png")] opacity-[0.03]')
+
+            with ui.row().classes('max-w-6xl mx-auto px-6 items-center gap-16 md:gap-24 relative z-10'):
+                logo_img = '/static/icon/logo.png'
+                # COLUMNA IZQUIERDA: VISUAL (El Robot y el Chat Demo)
+                with ui.column().classes('w-full md:w-1/2 items-center justify-center relative'):
+                    
+                    # 1. El Aura/Contenedor del Robot
+                    with ui.element('div').classes('relative w-64 h-64 md:w-80 md:h-80 flex items-center justify-center border-4 border-white ring-1 ring-rose-300 bg-white/50 rounded-full shadow-2xl shadow-rose-200/30 mx-auto'):
+                        # Círculos concéntricos animados (Efecto Radar)
+                        ui.element('div').classes('absolute inset-0 border border-rose-200 rounded-full animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite] opacity-80')
+                        ui.element('div').classes('absolute inset-4 border border-rose-300 rounded-full animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite] opacity-80 delay-300')
+                        
+                        # Avatar Central Flotando
+                        with ui.element('div').classes('w-48 h-48 md:w-56 md:h-56 bg-white rounded-full border-4 border-rose-300 shadow-2xl shadow-rose-200/50 flex items-center justify-center z-10 animate-float glow-effect'):
+                            ui.image(logo_img).classes('w-40 h-40 md:w-48 md:h-48 object-contain transform hover:scale-110 transition-transform duration-500 ')
+                            
+                        # Badge "Online"
+                        with ui.element('div').classes('absolute bottom-6 right-6 bg-green-500 border-4 border-white w-6 h-6 rounded-full z-20 shadow-md animate-bounce'):
+                            pass
+
+                    # 2. Burbujas de Chat "Demo" Flotantes (Decorativas)
+                    # Burbuja Usuario
+                    with ui.element('div').classes('absolute -top-4 -right-4 md:right-0 bg-white p-3 rounded-2xl rounded-tr-none shadow-lg border border-slate-100 max-w-[180px] chat-entry') as b1:
+                        b1.style('animation-delay: 1s')
+                        ui.label(t['chipi_demo_1']).classes('text-xs text-slate-600 font-medium')
+                    
+                    # Burbuja Chipi
+                    with ui.element('div').classes('absolute -bottom-8 -left-4 md:left-0 bg-slate-900 border-4 border-white p-4 rounded-2xl rounded-bl-none shadow-xl max-w-[220px] chat-entry flex gap-3 items-center') as b2:
+                        b2.style('animation-delay: 1.0s')
+                        with ui.avatar(color='white').props('size=sm'):
+                            ui.image(logo_img).classes('object-contain p-0.5 rounded-full border-2 border-white shadow-2xl overflow-hidden relative ring-1 ring-rose-300 bg-white')
+                        with ui.column().classes('gap-1'):
+                            ui.label('Chipi AI').classes('text-[10px] text-rose-400 font-bold uppercase')
+                            ui.label(t['chipi_demo_2']).classes('text-xs text-white leading-tight')
+
+                # COLUMNA DERECHA: TEXTO Y CTA
+                with ui.column().classes('w-full md:w-1/3 text-center md:text-left gap-6 scroll-hidden'):
+                    ui.label(t['chipi_tag']).classes('text-rose-600 font-bold tracking-widest uppercase text-sm self-center md:self-start bg-rose-50 px-3 py-1 rounded-full')
+                    
+                    with ui.column().classes('gap-2'):
+                        ui.label(t['chipi_title']).classes('text-4xl md:text-5xl font-extrabold text-slate-900')
+                        ui.label(t['chipi_subtitle']).classes('text-xl text-rose-500 font-medium')
+                    
+                    ui.label(t['chipi_desc']).classes('text-slate-600 text-lg leading-relaxed')
+
+                    # Botón Mágico que abre el chat existente
+                    # NOTA: Usamos JS para hacer click en el botón flotante que ya tienes
+                    # Asumimos que el botón flotante tiene la clase 'fixed' y 'bottom-6' como en tu código original.
+                    ui.button(t['chipi_btn'], icon='chat_bubble', 
+                            on_click=lambda: ui.run_javascript('''
+                                const chatBtn = document.querySelector('.fixed.bottom-6.right-6'); 
+                                if(chatBtn) {
+                                    chatBtn.click();
+                                    // Efecto de foco visual
+                                    chatBtn.classList.add('ring-4', 'ring-rose-300');
+                                    setTimeout(() => chatBtn.classList.remove('ring-4', 'ring-rose-300'), 1000);
+                                }
+                            ''')) \
+                        .props('unelevated color=slate-900 text-color=white size=lg') \
+                        .classes('rounded-full px-8 py-3 shadow-xl shadow-rose-900/10 hover:shadow-2xl hover:scale-105 transition-all duration-300 font-bold mt-4 self-center md:self-start')
+
        # --- REVIEWS / TESTIMONIOS (DESDE BD) ---
-        with ui.element('section').classes('w-full py-20 bg-slate-50 overflow-hidden relative border-y border-slate-200'):
+        with ui.element('section').classes('w-full py-32 relative bg-white') as reviews_sec:
             
             # 1. OBTENER DATOS DE LA BD
             reviews_list = []
@@ -367,168 +523,168 @@ def render_landing_page():
                 # No hacemos nada más aquí, dejaremos que el bloque 'if not reviews_list' ponga los datos de ejemplo si falló
 
             # 2. LOGICA DE DESPLAZAMIENTO INFINITO
-        # --- REVIEWS / TESTIMONIOS (CORREGIDO) ---
-        with ui.element('section').classes('w-full py-20 bg-slate-50 overflow-hidden relative border-y border-slate-200'):
-            
-            # 1. OBTENER DATOS DE LA BD
-            reviews_list = []
-            try:
-                with PostgresSession() as session:
-                    profiles = session.query(TeacherProfile).all()
-                    for profile in profiles:
-                        if profile.reviews and isinstance(profile.reviews, list):
-                            reviews_list.extend(profile.reviews)
-            except Exception as e:
-                print(f"Error conectando a la BD o extrayendo reviews: {e}")
-
-            # 2. LOGICA DE DUPLICADO PARA SCROLL INFINITO
-            # Duplicamos varias veces para asegurar que haya suficiente contenido para el scroll
-            if not reviews_list:
-                reviews_list = [{'name': 'Maria', 'comment': 'Excellent teacher!', 'rating': 5}]
-            
-            # Multiplicamos por 20 para tener suficiente contenido para el buffer
-            # Esto crea: [A, B, C, ... A, B, C ...] muchas veces.
-            infinite_reviews = reviews_list * 20
-
-            # 3. RENDERIZADO UI
-            with ui.column().classes('max-w-7xl mx-auto px-6 mb-12 text-center z-10 relative'):
-                ui.label(t.get('reviews_tag', 'Reviews')).classes('text-rose-600 font-bold tracking-widest uppercase text-sm')
-                ui.label(t.get('reviews_title', 'Historias de Éxito')).classes('text-4xl font-bold text-slate-900')
-                ui.label(t.get('reviews_subtitle', 'Personas reales, resultados reales.')).classes('text-slate-500 text-lg')
-
-            # Contenedor con máscara de desvanecimiento
-            with ui.element('div').classes('w-full overflow-hidden mask-fade relative'):
+            # --- REVIEWS / TESTIMONIOS (CORREGIDO) ---
+            with ui.element('section').classes('w-full py-20 bg-slate-50 overflow-hidden relative border-y border-slate-200'):
                 
-                # CONTENEDOR DEL SLIDER (Con ID 'reviews-container' y clases corregidas)
-                with ui.row().classes('gap-6 py-4 flex-nowrap overflow-x-auto hide-scrollbar w-full items-stretch no-select') as scroll_container:
-                    scroll_container.props('id=reviews-container')
+                # 1. OBTENER DATOS DE LA BD
+                reviews_list = []
+                try:
+                    with PostgresSession() as session:
+                        profiles = session.query(TeacherProfile).all()
+                        for profile in profiles:
+                            if profile.reviews and isinstance(profile.reviews, list):
+                                reviews_list.extend(profile.reviews)
+                except Exception as e:
+                    print(f"Error conectando a la BD o extrayendo reviews: {e}")
+
+                # 2. LOGICA DE DUPLICADO PARA SCROLL INFINITO
+                # Duplicamos varias veces para asegurar que haya suficiente contenido para el scroll
+                if not reviews_list:
+                    reviews_list = [{'name': 'Maria', 'comment': 'Excellent teacher!', 'rating': 5}]
+                
+                # Multiplicamos por 20 para tener suficiente contenido para el buffer
+                # Esto crea: [A, B, C, ... A, B, C ...] muchas veces.
+                infinite_reviews = reviews_list * 20
+
+                # 3. RENDERIZADO UI
+                with ui.column().classes('max-w-7xl mx-auto px-6 mb-12 text-center z-10 relative'):
+                    ui.label(t.get('reviews_tag', 'Reviews')).classes('text-rose-600 font-bold tracking-widest uppercase text-sm')
+                    ui.label(t.get('reviews_title', 'Historias de Éxito')).classes('text-4xl font-bold text-slate-900')
+                    ui.label(t.get('reviews_subtitle', 'Personas reales, resultados reales.')).classes('text-slate-500 text-lg')
+
+                # Contenedor con máscara de desvanecimiento
+                with ui.element('div').classes('w-full overflow-hidden mask-fade relative'):
                     
-                    for review in infinite_reviews:
-                        first_name = review.get('name', '')
-                        last_name = review.get('surname', '')
-                        full_name = f"{first_name} {last_name}".strip()
-                        r_name = full_name if full_name else review.get('username', 'Estudiante')
-                        r_text = review.get('comment', 'Sin comentarios.')
-                        r_time = review.get('time_zone', '')
-                        r_total = review.get('total_classes', "")
+                    # CONTENEDOR DEL SLIDER (Con ID 'reviews-container' y clases corregidas)
+                    with ui.row().classes('gap-6 py-4 flex-nowrap overflow-x-auto hide-scrollbar w-full items-stretch no-select') as scroll_container:
+                        scroll_container.props('id=reviews-container')
                         
-                        try:
-                            r_stars = int(review.get('rating', 5))
-                        except:
-                            r_stars = 5
-                        r_date = review.get('date', '') 
-
-                        # TARJETA
-                        # Usamos pointer-events-none en los hijos para que no interfieran con el arrastre del padre
-                        with ui.card().classes('w-[350px] shrink-0 p-6 rounded-2xl bg-white border border-slate-100 shadow-lg shadow-slate-200/50 flex flex-col gap-4 select-none'): 
-                            with ui.row().classes('items-center gap-3 w-full'):
-                                initial = (r_name[:2].upper())
-                                with ui.element('div').classes('w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 font-bold text-sm shadow-sm'):
-                                    ui.label(initial)
-                                
-                                with ui.column().classes('gap-0'):
-                                    with ui.row().classes('gap-2 items-center'):
-                                        ui.label(r_name).classes('font-bold text-slate-800 text-sm')
-                                        if r_total:
-                                            ui.label(f'{r_total} clases').classes('text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold')
-                                    if r_date:
-                                        ui.label(r_date).classes('text-xs text-slate-400')
-                                
-                                with ui.row().classes('ml-auto gap-0'):
-                                    for _ in range(r_stars):
-                                        ui.icon('star', color='amber-400', size='xs')
-
-                            ui.icon('format_quote', color='rose-100', size='md').classes('mb-[-15px]')
-                            ui.label(r_text).classes('text-slate-600 text-sm italic leading-relaxed line-clamp-4')
-
-            # --- SCRIPT JAVASCRIPT CORREGIDO (SEAMLESS LOOP) ---
-            ui.add_body_html('''
-            <script>
-                document.addEventListener('DOMContentLoaded', () => {
-                    function initReviewsSlider() {
-                        const slider = document.getElementById('reviews-container');
-                        
-                        // Si NiceGUI aún no renderizó el elemento, reintentar.
-                        if (!slider) {
-                            setTimeout(initReviewsSlider, 50);
-                            return;
-                        }
-
-                        let isDown = false;
-                        let isHovered = false;
-                        let startX;
-                        let scrollLeft;
-                        let animationId;
-                        
-                        // Velocidad del scroll (ajusta si lo quieres más rápido/lento)
-                        const speed = 0.5; 
-
-                        // 1. EVENTOS RATÓN (DRAG)
-                        slider.addEventListener('mousedown', (e) => {
-                            isDown = true;
-                            slider.classList.add('active');
-                            startX = e.pageX - slider.offsetLeft;
-                            scrollLeft = slider.scrollLeft;
-                            cancelAnimationFrame(animationId);
-                        });
-
-                        slider.addEventListener('mouseleave', () => {
-                            isDown = false;
-                            isHovered = false;
-                            slider.classList.remove('active');
-                            requestAnimationFrame(autoPlay);
-                        });
-
-                        slider.addEventListener('mouseup', () => {
-                            isDown = false;
-                            slider.classList.remove('active');
-                        });
-
-                        slider.addEventListener('mousemove', (e) => {
-                            if (!isDown) return;
-                            e.preventDefault();
-                            const x = e.pageX - slider.offsetLeft;
-                            const walk = (x - startX) * 2; 
-                            slider.scrollLeft = scrollLeft - walk;
-                        });
-
-                        // 2. PAUSAR EN HOVER
-                        slider.addEventListener('mouseenter', () => {
-                            isHovered = true;
-                        });
-
-                        // 3. LÓGICA DE LOOP INFINITO PERFECTO
-                        function autoPlay() {
-                            if (!isDown && !isHovered) {
-                                slider.scrollLeft += speed;
-                            }
-
-                            // TRUCO MATEMÁTICO:
-                            // Si hemos scrolleado más de la mitad del ancho total del contenido...
-                            // Restamos exactamente la mitad.
-                            // Al ser la lista un espejo (A+A), saltar de la mitad al inicio es invisible.
-                            if (slider.scrollLeft >= (slider.scrollWidth / 2)) {
-                                slider.scrollLeft -= (slider.scrollWidth / 2);
-                            } 
+                        for review in infinite_reviews:
+                            first_name = review.get('name', '')
+                            last_name = review.get('surname', '')
+                            full_name = f"{first_name} {last_name}".strip()
+                            r_name = full_name if full_name else review.get('username', 'Estudiante')
+                            r_text = review.get('comment', 'Sin comentarios.')
+                            r_time = review.get('time_zone', '')
+                            r_total = review.get('total_classes', "")
                             
-                            // Protección para scroll hacia atrás (si el usuario arrastra a la izquierda)
-                            if (slider.scrollLeft <= 0) {
-                                slider.scrollLeft += (slider.scrollWidth / 2);
+                            try:
+                                r_stars = int(review.get('rating', 5))
+                            except:
+                                r_stars = 5
+                            r_date = review.get('date', '') 
+
+                            # TARJETA
+                            # Usamos pointer-events-none en los hijos para que no interfieran con el arrastre del padre
+                            with ui.card().classes('w-[350px] shrink-0 p-6 rounded-2xl bg-white border border-slate-100 shadow-lg shadow-slate-200/50 flex flex-col gap-4 select-none'): 
+                                with ui.row().classes('items-center gap-3 w-full'):
+                                    initial = (r_name[:2].upper())
+                                    with ui.element('div').classes('w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 font-bold text-sm shadow-sm'):
+                                        ui.label(initial)
+                                    
+                                    with ui.column().classes('gap-0'):
+                                        with ui.row().classes('gap-2 items-center'):
+                                            ui.label(r_name).classes('font-bold text-slate-800 text-sm')
+                                            if r_total:
+                                                ui.label(f'{r_total} clases').classes('text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold')
+                                        if r_date:
+                                            ui.label(r_date).classes('text-xs text-slate-400')
+                                    
+                                    with ui.row().classes('ml-auto gap-0'):
+                                        for _ in range(r_stars):
+                                            ui.icon('star', color='amber-400', size='xs')
+
+                                ui.icon('format_quote', color='rose-100', size='md').classes('mb-[-15px]')
+                                ui.label(r_text).classes('text-slate-600 text-sm italic leading-relaxed line-clamp-4')
+
+                # --- SCRIPT JAVASCRIPT CORREGIDO (SEAMLESS LOOP) ---
+                ui.add_body_html('''
+                <script>
+                    document.addEventListener('DOMContentLoaded', () => {
+                        function initReviewsSlider() {
+                            const slider = document.getElementById('reviews-container');
+                            
+                            // Si NiceGUI aún no renderizó el elemento, reintentar.
+                            if (!slider) {
+                                setTimeout(initReviewsSlider, 50);
+                                return;
                             }
 
+                            let isDown = false;
+                            let isHovered = false;
+                            let startX;
+                            let scrollLeft;
+                            let animationId;
+                            
+                            // Velocidad del scroll (ajusta si lo quieres más rápido/lento)
+                            const speed = 0.5; 
+
+                            // 1. EVENTOS RATÓN (DRAG)
+                            slider.addEventListener('mousedown', (e) => {
+                                isDown = true;
+                                slider.classList.add('active');
+                                startX = e.pageX - slider.offsetLeft;
+                                scrollLeft = slider.scrollLeft;
+                                cancelAnimationFrame(animationId);
+                            });
+
+                            slider.addEventListener('mouseleave', () => {
+                                isDown = false;
+                                isHovered = false;
+                                slider.classList.remove('active');
+                                requestAnimationFrame(autoPlay);
+                            });
+
+                            slider.addEventListener('mouseup', () => {
+                                isDown = false;
+                                slider.classList.remove('active');
+                            });
+
+                            slider.addEventListener('mousemove', (e) => {
+                                if (!isDown) return;
+                                e.preventDefault();
+                                const x = e.pageX - slider.offsetLeft;
+                                const walk = (x - startX) * 2; 
+                                slider.scrollLeft = scrollLeft - walk;
+                            });
+
+                            // 2. PAUSAR EN HOVER
+                            slider.addEventListener('mouseenter', () => {
+                                isHovered = true;
+                            });
+
+                            // 3. LÓGICA DE LOOP INFINITO PERFECTO
+                            function autoPlay() {
+                                if (!isDown && !isHovered) {
+                                    slider.scrollLeft += speed;
+                                }
+
+                                // TRUCO MATEMÁTICO:
+                                // Si hemos scrolleado más de la mitad del ancho total del contenido...
+                                // Restamos exactamente la mitad.
+                                // Al ser la lista un espejo (A+A), saltar de la mitad al inicio es invisible.
+                                if (slider.scrollLeft >= (slider.scrollWidth / 2)) {
+                                    slider.scrollLeft -= (slider.scrollWidth / 2);
+                                } 
+                                
+                                // Protección para scroll hacia atrás (si el usuario arrastra a la izquierda)
+                                if (slider.scrollLeft <= 0) {
+                                    slider.scrollLeft += (slider.scrollWidth / 2);
+                                }
+
+                                animationId = requestAnimationFrame(autoPlay);
+                            }
+
+                            // Iniciar
                             animationId = requestAnimationFrame(autoPlay);
                         }
 
-                        // Iniciar
-                        animationId = requestAnimationFrame(autoPlay);
-                    }
-
-                    initReviewsSlider();
-                });
-            </script>
-            ''')
+                        initReviewsSlider();
+                    });
+                </script>
+                ''')
         # --- PLANS ---
-        with ui.element('section').classes('w-full py-32 bg-slate-50 relative') as plans_sec:
+        with ui.element('section').classes('w-full py-32 bg-white relative') as plans_sec:
             plans_sec.props('id=plans')
             with ui.column().classes('max-w-7xl mx-auto px-6 w-full relative z-10'):
                 with ui.column().classes('w-full text-center mb-20 gap-4 scroll-hidden'):

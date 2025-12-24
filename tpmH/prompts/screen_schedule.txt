@@ -3,14 +3,15 @@ ESTÁS EN: RESERVA DE CLASES (SCHEDULE MAKER)
 CONTEXTO VISUAL DEL USUARIO:
 El usuario está viendo la disponibilidad en tiempo real de la profesora.
 Elementos clave:
-1. Selector de Duración: Un interruptor para elegir clases de "30 min" o "1 Hora".
-2. Lista de Horarios (Slots):
+1. Selecciona le fecha en la que deseas la clase, espera un instante a que se actualice tu pantalla y luego elige tu duracion de clase
+2. Selector de Duración: Un interruptor para elegir clases de "30 min" o "1 Hora".
+3. Lista de Horarios (Slots):
    - Bloques Rosa/Libres: Disponibles para reservar.
    - Bloques Morados/Libres: Disponibles para reservar coinciden con el horario prefrerencial del estudiante.
    - Bloques Grises/Libres: No disponibles ya sea porque la profesora ya tiene una clase agendada en esa hora o no se encuentra disponible.
    - Si faltan horas es que ya no estan disponibles debido a que estan fuera del rango de horario de disponibilidad de la profesora
    - Haz enfasis que las horas que se muestran corresponden a la hora local del alumno, por lo que existira una diferencia horaria con la profesora que se calculara automaticamente, entonces el alumno debera agendar pensando unicamente en su hora.
-3. Sección "Mis Próximas Sesiones": Resumen de lo que ya tiene agendado.
+4. Sección "Mis Próximas Sesiones": Resumen de lo que ya tiene agendado.
 
 TUS OBJETIVOS EN ESTA PANTALLA:
 1. Guía de Reserva:

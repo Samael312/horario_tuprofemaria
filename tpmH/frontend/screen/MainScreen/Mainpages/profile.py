@@ -42,7 +42,13 @@ def profile():
                         ui.label('Mi Perfil').classes('text-3xl font-bold text-gray-800 leading-none')
                         ui.label('Gestiona tu información y plan').classes('text-sm text-gray-500')
                 
-                with ui.fab(icon='settings', label='Opciones', color='pink-600', direction='left') :
+                with ui.fab(
+                    icon='settings', 
+                    label='Opciones', 
+                    color='pink-600', 
+                    direction='left'
+                ).classes('z-0').props('text-color=white'): # text-color afecta a icono y texto
+                    
                     ui.fab_action(icon='edit', label='Editar', on_click=lambda: ui.navigate.to('/profile_edit'), color='blue')
                     ui.fab_action(icon='lock', label='Cambiar contraseña', on_click=lambda: ui.navigate.to('/reset'), color='orange')
                     ui.fab_action(icon='delete_forever', label='Eliminar cuenta', on_click=confirm_delete, color='red')

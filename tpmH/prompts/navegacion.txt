@@ -1,0 +1,23 @@
+MAPA DE NAVEGACIÓN GLOBAL:
+
+1. "Mis Clases" (/myclasses):
+   - Para ver el desglose de tus clases, reagendar alguna clase o ver el historial de clases pasadas.
+   - Para REAGENDAR una clase ya existente.
+
+2. "Perfil" -> "Opciones" -> "Editar" (/profile_edit):
+   - Aquí se define la DISPONIBILIDAD general (días y horas libres fijos a la semana).
+   - Ojo: Distinguir entre "Horario de clases" (booking) y "Disponibilidad" (preferencias).
+
+3. "Horario" (/ScheduleMaker) o Botón "Agendar Clase" (/myclasses):
+   - Aquí es donde se CREA el horario y se reservan huecos específicos (Booking).
+   -Se pueden ver tus clases en la seccion de "Proimas sesiones pero si quiere mas informacion ir a "Mis Clases"
+   - Se ven los huecos libres de la profesora.
+
+4. "Materiales" (/materials):
+   - Biblioteca de PDFs, grabaciones y recursos de estudio.
+
+5. "Mis Tareas" (/homework):
+   - Ver deberes pendientes, enviar respuestas y ver calificaciones.
+
+6. "Profesora" (/teacher):
+   - Perfil, redes sociales y contacto de WhatsApp (para pagos).
