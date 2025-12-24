@@ -10,6 +10,8 @@ from components.save.save_rgo import create_save_schedule_button
 from components.save.save_asg import create_save_asgn_classes
 from db.postgres_db import PostgresSession
 from db.models import User, SchedulePref, AsignedClasses
+from prompts.chatbot import render_floating_chatbot
+
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -213,3 +215,5 @@ def new_student():
             duration_selector=duration_selector,
             package_selector=package_selector
         )
+        # Renderizar el chatbot flotante
+        render_floating_chatbot('onboarding')

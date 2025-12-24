@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 # Asegúrate de que estos imports existan en tu proyecto, si no, coméntalos para probar
 from db.postgres_db import PostgresSession
 from db.models import User
+from prompts.chatbot import render_floating_chatbot
 
 def create_ui(content_function=None):
     """Crea la interfaz base consistente con el login."""
@@ -131,13 +132,14 @@ def adv_method():
                         # Botones
                         ui.button('Siguiente: Crear Cuenta', on_click=continue_to_signup) \
                             .props('unelevated icon-right=arrow_forward') \
-                            .classes('w-full py-3 mt-2 bg-gray-900 text-white font-bold rounded-xl shadow-lg hover:bg-gray-800 transition-all text-base')
+                            .classes('!w-full py-3 mt-2 bg-gray-900 text-white font-bold rounded-xl shadow-lg hover:bg-gray-800 transition-all text-base')
                         
                         ui.button('Cancelar', on_click=lambda: ui.navigate.to('/login')) \
-                            .props('flat text-color=grey-5 dense') \
+                            .props('!flat text-color=grey-5 dense') \
                             .classes('w-full text-xs')
 
         render_method_screen()
+        render_floating_chatbot('methods')
 
 # EJECUCIÓN
 if __name__ in {"__main__", "__mp_main__"}:

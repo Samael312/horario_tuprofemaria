@@ -3,6 +3,8 @@ from db.postgres_db import PostgresSession
 from db.models import Material, StudentMaterial
 from components.header import create_main_screen 
 import os
+from prompts.chatbot import render_floating_chatbot
+
 
 @ui.page('/materials')
 def student_materials_page():
@@ -139,3 +141,4 @@ def student_materials_page():
                                     .props(f'flat round color={check_col}')
 
         materials_grid()
+    render_floating_chatbot('materials')

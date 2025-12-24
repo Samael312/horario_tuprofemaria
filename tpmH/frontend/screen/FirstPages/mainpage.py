@@ -7,8 +7,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from nicegui import app, ui
 from db.models import TeacherProfile
 from db.postgres_db import PostgresSession
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
+import asyncio
+import html
+import datetime
+from prompts.chatbot import render_floating_chatbot
 
+def log_debug(msg):
+    """Ayuda visual para ver los logs claramente en la consola"""
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"🔍 [{timestamp}] DEBUG: {msg}")
 
+client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+
+load_dotenv()
 # =====================================================
 # TRADUCCIONES
 # =====================================================
@@ -597,3 +610,7 @@ def render_landing_page():
         render_header_content()
     
     render_body_content()
+    
+    # Renderizar el chatbot flotante
+    render_floating_chatbot('main')
+

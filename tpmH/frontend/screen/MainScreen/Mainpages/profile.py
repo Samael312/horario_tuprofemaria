@@ -6,6 +6,7 @@ from db.models import User, SchedulePref, AsignedClasses
 from components.delete_all import confirm_delete
 from sqlalchemy import or_
 import logging
+from prompts.chatbot import render_floating_chatbot
 
 # Configuración de logger
 logging.basicConfig(level=logging.INFO)
@@ -199,3 +200,6 @@ def profile():
 
     finally:
         session.close()
+
+    render_floating_chatbot('profile')
+    

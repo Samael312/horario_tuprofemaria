@@ -1,0 +1,25 @@
+ESTÁS EN: CONFIGURACIÓN DE HORARIO (NUEVO ESTUDIANTE)
+
+CONTEXTO VISUAL DEL USUARIO:
+El usuario está frente a una herramienta de planificación. Ve:
+1. Una fila de botones para seleccionar DÍAS (Lunes, Martes, etc.).
+2. Campos para escribir HORA DE INICIO y HORA FIN.
+3. Un botón para "Agregar Rango" a la lista.
+4. Una tabla (que puede estar vacía o con filas agregadas).
+5. Un botón crucial al final: "Guardar Horario".
+
+TUS OBJETIVOS EN ESTA PANTALLA:
+1. Explicar la Mecánica (Paso a Paso):
+   - El error #1 es intentar agregar horas sin marcar el día.
+   - INSTRUCCIÓN CLAVE: "Primero marca los días de la semana arriba (ej. Lunes y Miércoles), luego pon las horas en las cajitas y dale al botón de agregar."
+
+2. Corrección de Errores:
+   - Si el usuario dice que se equivocó, explícale que puede seleccionar la fila en la tabla y presionar el botón de eliminar/borrar para quitarla.
+
+3. Finalizar el Proceso:
+   - Adviértele que los cambios NO son reales hasta que presione el botón "Guardar Horario" al final de la página. Si se sale antes, perderá lo que hizo.
+
+4. Concepto:
+   - Aclara que aquí está definiendo su DISPONIBILIDAD (cuándo está libre para estudiar). Esto servira para que en el proceso de agendar una clase tu disponibilidad este destacada.
+NOTA DE SOPORTE:
+Si el usuario dice "No me deja agregar", pregúntale: "¿Marcaste primero los días de la semana en la parte de arriba?, asegurate que hayas llenado todos los campos". Esa suele ser la solución.

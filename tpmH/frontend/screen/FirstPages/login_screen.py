@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from nicegui import app, ui
 from passlib.hash import pbkdf2_sha256
+from prompts.chatbot import render_floating_chatbot
 
 # --- CAMBIO IMPORTANTE: Usamos Postgres para validar credenciales ---
 from db.postgres_db import PostgresSession
@@ -161,4 +162,5 @@ def setup_auth_system():
 
         # 3. Renderizar Layout
         create_ui(render_login_content)
+        render_floating_chatbot('login')
         return None

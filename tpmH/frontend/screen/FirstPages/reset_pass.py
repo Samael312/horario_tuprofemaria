@@ -1,6 +1,6 @@
 from nicegui import ui, app
 from passlib.hash import pbkdf2_sha256
-
+from prompts.chatbot import render_floating_chatbot
 # --- NUEVOS IMPORTS ---
 from db.models import User
 from db.postgres_db import PostgresSession  # Fuente de la verdad
@@ -198,3 +198,4 @@ def reset_screen():
 
     # Renderizar UI
     create_ui(render_reset_content)
+    render_floating_chatbot('reset_pass')

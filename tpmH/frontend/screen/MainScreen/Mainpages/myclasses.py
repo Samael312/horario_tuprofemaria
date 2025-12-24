@@ -11,6 +11,7 @@ from components.share_data import days_of_week, PACKAGE_LIMITS, pack_of_classes
 from zoneinfo import ZoneInfo # Para manejo preciso de zonas al reagendar
 from datetime import datetime, timedelta
 import asyncio  # Importamos asyncio para corregir el error del loop
+from prompts.chatbot import render_floating_chatbot
 
 # Configuración de logger
 logging.basicConfig(level=logging.INFO)
@@ -800,3 +801,4 @@ def my_classes():
         render_content.refresh()
 
     render_content()
+    render_floating_chatbot('my_classes')

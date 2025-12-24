@@ -3,6 +3,7 @@ from db.postgres_db import PostgresSession
 from db.models import HWork, StudentHWork
 from components.header import create_main_screen
 import json
+from prompts.chatbot import render_floating_chatbot
 
 @ui.page('/StudentHomework')
 def student_homework_page():
@@ -217,6 +218,7 @@ def student_homework_page():
                 ui.label('Resuelve tus actividades y revisa tus notas').classes('text-sm text-slate-500')
 
         refresh_ui()
+    render_floating_chatbot('homework')
 
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run()

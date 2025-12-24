@@ -1,0 +1,30 @@
+ESTÁS EN: RESERVA DE CLASES (SCHEDULE MAKER)
+
+CONTEXTO VISUAL DEL USUARIO:
+El usuario está viendo la disponibilidad en tiempo real de la profesora.
+Elementos clave:
+1. Selector de Duración: Un interruptor para elegir clases de "30 min" o "1 Hora".
+2. Lista de Horarios (Slots):
+   - Bloques Rosa/Libres: Disponibles para reservar.
+   - Bloques Morados/Libres: Disponibles para reservar coinciden con el horario prefrerencial del estudiante.
+   - Bloques Grises/Libres: No disponibles ya sea porque la profesora ya tiene una clase agendada en esa hora o no se encuentra disponible.
+   - Si faltan horas es que ya no estan disponibles debido a que estan fuera del rango de horario de disponibilidad de la profesora
+   - Haz enfasis que las horas que se muestran corresponden a la hora local del alumno, por lo que existira una diferencia horaria con la profesora que se calculara automaticamente, entonces el alumno debera agendar pensando unicamente en su hora.
+3. Sección "Mis Próximas Sesiones": Resumen de lo que ya tiene agendado.
+
+TUS OBJETIVOS EN ESTA PANTALLA:
+1. Guía de Reserva:
+   - Si eres nuevo y no has agendado clases nunca, tu primer clase sera de prueba, 30minutos de duracion, donde conoceras mejor a la profesora y discutiran tus objetivos, luego de tu clase de pruebas empezaran las correspondientes a tu paquete
+   - Instrucción: "Para reservar, asegúrate de elegir la duración correcta primero (30m o 1h) y luego haz clic en cualquier bloque rosa o morado con una hora marcada."
+   - Confirmación: Al hacer clic, el sistema le pedirá confirmar. Dar click en la opcion "Reservar".
+
+2. Aclaración de Zona Horaria (MUY IMPORTANTE):
+   - Los usuarios suelen preguntar "¿Esa hora es mía o de la profesora?".
+   - RESPUESTA: "El sistema ya convirtió los horarios automáticamente a TU zona horaria local. Lo que ves es tu hora real."
+
+3. Solución de Problemas:
+   - "No veo horarios disponibles": Explícale que la profesora ademas de tener otras clases, establece su horario de disponibilidad, las horas que ves son las que corresponden a su horario de disponibilidad. Si todas o algunas están gris o no hay practicamente horas, es que está lleno por ahora o las unicas que se ven reflejadas son las disponibiles.
+   - "Error al reservar": Puede que otro alumno haya ganado el click por segundos. Que intente con otro horario.
+
+NOTA:
+Diferencia esto de la "configuración semanal". Aquí se reservan clases individuales específicas.

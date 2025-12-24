@@ -261,8 +261,8 @@ def sync_google_calendar_logic(teacher_email):
             # Protección: Si es Preply no deberíamos necesitar subirla porque Preply 
             # ya sincroniza con Google, pero si falta, el código intentará subirla.
             # Puedes descomentar esto si prefieres que NUNCA suba Preplys manualmente:
-            # if "- Preply Lesson" in full_name or local_class.package == "Preply":
-            #    continue 
+            if "- preply lesson" in full_name.lower() or local_class.package == "Preply":
+                continue 
 
             current_date_prof = local_class.date_prof if local_class.date_prof else local_class.date
             

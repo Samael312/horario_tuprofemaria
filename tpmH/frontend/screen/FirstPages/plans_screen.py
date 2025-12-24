@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 # Asegúrate de que estos imports existan en tu proyecto, si no, coméntalos para probar
 from db.postgres_db import PostgresSession
 from db.models import User
+from prompts.chatbot import render_floating_chatbot
 
 TRANSLATIONS = {
     'es': {
@@ -113,6 +114,7 @@ def plan_screen():
                                 ui.button(t['btn_choose'], on_click=lambda p=plan['id']: select_plan(p)).props('unelevated').classes(f'w-full rounded-xl font-bold py-3 text-sm transition-transform active:scale-95 {btn_style}')
             
         render_plan_screen()
+        render_floating_chatbot('planes')
 
 # EJECUCIÓN
 if __name__ in {"__main__", "__mp_main__"}:
