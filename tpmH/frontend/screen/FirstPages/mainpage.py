@@ -612,5 +612,5 @@ def render_landing_page():
     render_body_content()
     
     # Renderizar el chatbot flotante
-    render_floating_chatbot()
+    render_floating_chatbot('main')
 

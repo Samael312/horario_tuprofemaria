@@ -9,6 +9,7 @@ from db.sqlite_db import BackupSession
 from db.models import User, ScheduleProf, ScheduleProfEsp, AsignedClasses, SchedulePref
 from components.header import create_main_screen
 from components.share_data import days_of_week, PACKAGE_LIMITS
+from prompts.chatbot import render_floating_chatbot
 # IMPORTAMOS EL CONVERSOR
 from components.timezone_converter import convert_student_to_teacher, get_slots_in_student_tz, from_int_time
 
@@ -153,34 +154,25 @@ def scheduleMaker():
             dt = datetime.strptime(date_str, '%Y-%m-%d')
             day_name = days_of_week[dt.weekday()]
             
-            # --- CAMBIO IMPORTANTE AQUI ---
-            
-            # 1. Cargamos SIEMPRE el horario general (Base)
+            # 1. Reglas Generales y Específicas
             general_rules = session.query(ScheduleProf).filter_by(days=day_name).all()
-            
-            # 2. Cargamos el horario específico (Excepciones)
             specific_rules = session.query(ScheduleProfEsp).filter_by(date=date_str).all()
 
             available_ranges_prof = []
 
-            # A) Agregamos disponibilidad GENERAL
+            # Disponibilidad General
             for r in general_rules:
-                # Usamos getattr para seguridad, aunque en general es .availability
-                status = str(getattr(r, 'availability', ''))
-                if status in POSITIVE_STATUS:
+                if str(getattr(r, 'availability', '')) in POSITIVE_STATUS:
                     available_ranges_prof.append((r.start_time, r.end_time))
             
-            # B) Agregamos disponibilidad ESPECÍFICA EXTRA (Si el profe agregó horas extra "Libre")
+            # Disponibilidad Específica (Extra)
             for r in specific_rules:
-                status = str(getattr(r, 'avai', '')) # En Esp suele llamarse .avai
-                if status in POSITIVE_STATUS:
+                if str(getattr(r, 'avai', '')) in POSITIVE_STATUS:
                     available_ranges_prof.append((r.start_time, r.end_time))
 
             if not available_ranges_prof: return [] 
 
-            # 3. BUSCAMOS LOS BLOQUEOS (Clases + Horarios Específicos Ocupados)
-            
-            # Bloqueos por Clases ya agendadas
+            # 2. Bloqueos (Clases ya agendadas + Bloqueos específicos)
             busy_classes = session.query(AsignedClasses).filter(
                 AsignedClasses.date == date_str, 
                 AsignedClasses.status != 'Cancelled'
@@ -188,26 +180,24 @@ def scheduleMaker():
             
             blocked_intervals_prof = []
             
-            # Añadimos las clases a los bloqueos
             for c in busy_classes:
+                # Usar hora profesor si existe, si no hora local
                 sp = c.start_prof_time if c.start_prof_time is not None else c.start_time
                 ep = c.end_prof_time if c.end_prof_time is not None else c.end_time
                 blocked_intervals_prof.append((sp, ep))
 
-            # --- NUEVO: Añadimos los horarios específicos "OCUPADO" como bloqueos ---
             for r in specific_rules:
-                status = str(getattr(r, 'avai', ''))
-                if status not in POSITIVE_STATUS:
-                    # Si dice "Ocupado", "Meeting", etc., lo añadimos a la lista negra
+                if str(getattr(r, 'avai', '')) not in POSITIVE_STATUS:
                     blocked_intervals_prof.append((r.start_time, r.end_time))
 
-            # -------------------------------
-
+            # Helpers de conversión
             def to_min(t): return int(str(t).zfill(4)[:2]) * 60 + int(str(t).zfill(4)[2:])
             def to_hhmm(mins): return int(f"{mins // 60}{str(mins % 60).zfill(2)}")
 
-            prof_slots = []
-            # El resto de la lógica de iteración se mantiene igual...
+            prof_slots_free = []
+            prof_slots_busy = []
+
+            # 3. Generar Slots y Clasificar
             for r_start, r_end in available_ranges_prof:
                 curr_min = to_min(r_start)
                 end_min = to_min(r_end)
@@ -216,23 +206,35 @@ def scheduleMaker():
                     slot_start = curr_min
                     slot_end = curr_min + duration_mins
                     
+                    # Checar colisión
                     is_blocked = False
-                    # Ahora este loop revisa TANTO clases COMO horarios específicos ocupados
                     for b_start, b_end in blocked_intervals_prof:
                         bs, be = to_min(b_start), to_min(b_end)
-                        # Lógica de colisión estricta
                         if (slot_start < be) and (slot_end > bs):
                             is_blocked = True; break
                     
-                    if not is_blocked: 
-                        prof_slots.append(to_hhmm(slot_start))
+                    if is_blocked:
+                        prof_slots_busy.append(to_hhmm(slot_start))
+                    else: 
+                        prof_slots_free.append(to_hhmm(slot_start))
                     
                     curr_min += duration_mins 
             
+            # 4. Convertir a Hora Estudiante
             student_tz = get_user_timezone()
-            final_student_slots = get_slots_in_student_tz(prof_slots, date_str, student_tz)
+            final_free = get_slots_in_student_tz(prof_slots_free, date_str, student_tz)
+            final_busy = get_slots_in_student_tz(prof_slots_busy, date_str, student_tz)
             
-            return sorted(list(set(final_student_slots)))
+            # 5. Unificar con etiqueta
+            combined_slots = []
+            for t in final_free:
+                combined_slots.append({'time': t, 'status': 'free'})
+            for t in final_busy:
+                combined_slots.append({'time': t, 'status': 'busy'})
+            
+            combined_slots.sort(key=lambda x: x['time'])
+            
+            return combined_slots
 
         except Exception as e:
             logger.error(f"Error slots: {e}")
@@ -387,7 +389,7 @@ def scheduleMaker():
 
     @ui.refreshable
     def render_slots_area():
-        # Si estamos cargando, mostrar spinner
+         # Si estamos cargando, mostrar spinner
         if state.get('loading', False):
             with ui.column().classes('w-full items-center justify-center py-12'):
                 ui.spinner('dots', size='lg', color='rose')
@@ -408,49 +410,80 @@ def scheduleMaker():
         except: return
 
         current_duration = state['duration']
-        all_slots = get_available_slots(state['date'], current_duration)
+        all_slots_data = get_available_slots(state['date'], current_duration)
         pref_ranges = get_user_preferred_ranges(username, state['date'])
         
-        if not all_slots:
+        if not all_slots_data:
             with ui.column().classes('w-full items-center justify-center py-16 bg-white rounded-xl border border-dashed border-slate-300'):
                 ui.icon('event_busy', size='4xl', color='slate-300')
                 ui.label("No hay disponibilidad").classes('text-slate-500 font-medium mt-3')
             return
 
         with ui.column().classes('w-full gap-4'):
-            has_prefs = any(is_in_user_range(s, pref_ranges) for s in all_slots)
+            # Leyenda si hay preferentes
+            has_prefs = any((item['status'] == 'free' and is_in_user_range(item['time'], pref_ranges)) for item in all_slots_data)
             if has_prefs:
                 with ui.row().classes('items-center gap-2 text-xs text-purple-700 bg-purple-50 px-3 py-1.5 rounded-lg self-start border border-purple-100'):
                     ui.icon('star', size='xs', color='purple-700')
                     ui.label('Horarios preferenciales (Morado)')
 
+            # --- GRID DE HORARIOS ---
             with ui.grid().classes('w-full grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3'):
-                for slot in all_slots:
+                
+                for item in all_slots_data:
+                    slot = item['time']
+                    status = item['status']
+                    
+                    # Formato de hora
                     t_str = str(slot).zfill(4)
                     fmt_time = f"{t_str[:2]}:{t_str[2:]}"
+                    
                     is_preferred = is_in_user_range(slot, pref_ranges)
-                    time_icon = get_time_icon(slot)
                     is_past_hour = is_today and (slot < current_hhmm)
 
+                    # --- LÓGICA DE ESTILOS ---
+                    
+                    # 1. HORA PASADA (Gris muy claro, deshabilitado)
                     if is_past_hour:
-                        btn_classes = "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
-                        btn_props = "disabled flat color=grey"
+                        btn_color_class = "!bg-gray-600 hover:bg-gray-700 text-white border-gray-800 cursor-not-allowed"
+                        btn_props = "flat"
+                        icon_name = "schedule"
                         click_handler = None
-                    else:
-                        click_handler = lambda s=slot: render_booking_dialog(s)
-                        btn_props = "unelevated color=None"
-                        if is_preferred:
-                            btn_classes = "bg-purple-600 hover:bg-purple-700 text-white border-purple-800"
-                        else:
-                            btn_classes = "bg-rose-600 hover:bg-rose-700 text-white border-rose-800"
+                    
+                    # 2. OCUPADO (Gris sólido, "No disponible")
+                    elif status == 'busy':
+                        # Gris medio, sin relieve (flat), cursor de prohibido
+                        btn_color_class = "!bg-gray-600 hover:bg-gray-700 text-white border-gray-800 cursor-not-allowed" 
+                        btn_props = "flat"
+                        icon_name = "lock"
+                        
+                        # Al hacer click, solo notifica
+                        def notify_busy():
+                            ui.notify('Horario no disponible o reservado.', type='warning', icon='lock', position='center')
+                        click_handler = notify_busy
 
+                    # 3. DISPONIBLE (Lógica de colores Rosado vs Morado)
+                    else:
+                        btn_props = "unelevated"
+                        icon_name = "schedule" # O 'star' si prefieres distinguir icono también
+                        click_handler = lambda s=slot: render_booking_dialog(s)
+
+                        if is_preferred:
+                            # MORADO (Estilo 3D)
+                            btn_color_class = "!bg-purple-600 hover:bg-purple-700 text-white border-purple-800"
+                            icon_name = "star" # Icono estrella para preferidos
+                        else:
+                            # ROSADO (Estilo 3D)
+                            btn_color_class = "!bg-rose-600 hover:bg-rose-700 text-white border-rose-800"
+
+                    # RENDERIZAR BOTÓN
                     btn = ui.button(on_click=click_handler)
                     btn.props(btn_props).classes(
-                        f"{btn_classes} shadow-md border-b-4 rounded-xl py-3 px-0 "
+                        f"{btn_color_class} shadow-md border-b-4 rounded-xl py-3 px-0 "
                         "transition-all active:border-b-0 active:translate-y-1 h-auto flex flex-col gap-1"
                     )
                     with btn:
-                        ui.icon(time_icon, size='xs').classes('opacity-90')
+                        ui.icon(icon_name, size='xs').classes('opacity-90')
                         ui.label(fmt_time).classes('font-bold text-sm tracking-wide')
 
     @ui.refreshable
@@ -664,3 +697,5 @@ def scheduleMaker():
                 render_sidebar()
             with ui.column().classes('lg:col-span-8 w-full order-1 lg:order-2'):
                 render_main_content()
+        
+    render_floating_chatbot('schedule')

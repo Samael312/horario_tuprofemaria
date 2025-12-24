@@ -1,62 +1,129 @@
-from nicegui import ui
+from nicegui import ui, app
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 import asyncio
 import os
 
-# 1. CARGAR ENTORNO
+# 1. CARGA DE ENTORNO
 load_dotenv()
 
-# 2. CONFIGURACIÓN DE RUTAS (ROBUSTA)
-# Obtenemos la ruta absoluta de la carpeta donde está este archivo (chatbot.py)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Construimos la ruta absoluta a la carpeta prompts
-PROMPTS_DIR = os.path.join(BASE_DIR, 'prompts')
+# 2. CONFIGURACIÓN DE RUTAS (CORREGIDO)
+# Obtenemos la ruta donde está ESTE archivo (chatbot.py)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 3. CLIENTE OPENAI
+# Lógica inteligente: Si chatbot.py está en la raíz, busca 'prompts'.
+# Si por error chatbot.py estuviera dentro de 'prompts', usa el directorio actual.
+if os.path.basename(CURRENT_DIR) == 'prompts':
+    PROMPTS_DIR = CURRENT_DIR
+else:
+    PROMPTS_DIR = os.path.join(CURRENT_DIR, 'prompts')
+
+# Cliente OpenAI
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# --- LÓGICA DEL BOT (BACKEND) ---
+# ==============================================================================
+# LÓGICA DEL BACKEND
+# ==============================================================================
 
 def read_prompt(filename):
-    """Lee archivos de la carpeta prompts usando rutas absolutas"""
+    """Lee el archivo .txt localmente (ESTO ES GRATIS, NO GASTA TOKENS)"""
     try:
-        # Usamos PROMPTS_DIR que definimos arriba
         path = os.path.join(PROMPTS_DIR, filename)
-        
-        # Debug: Imprimir ruta si falla algo (opcional, ayuda a verificar)
-        # print(f"Leyendo prompt desde: {path}") 
-        
-        if not os.path.exists(path): 
-            print(f"⚠️ Alerta: No se encontró el archivo {filename} en {path}")
+        if not os.path.exists(path):
+            # Debug silencioso en consola para no molestar al usuario final
+            print(f"⚠️ Archivo faltante: {path}") 
             return ""
-            
-        with open(path, 'r', encoding='utf-8') as f: 
+        with open(path, 'r', encoding='utf-8') as f:
             return f.read()
     except Exception as e:
-        print(f"Error leyendo prompt {filename}: {e}")
+        print(f"Error leyendo {filename}: {e}")
         return ""
 
-async def get_bot_response(message):
-    """Cerebro del Bot (Solo Español)"""
+async def get_bot_response(message, screen_name):
+    """
+    Cerebro con Logs detallados en terminal.
+    """
     
-    # 1. Cargar contexto base
-    base_prompt = read_prompt('context.txt')
-    
-    # 2. Router Simple: ¿Preguntan por precios?
-    msg_lower = message.lower()
-    keywords_planes = ['precio', 'costo', 'plan', 'dólar', 'cuanto', 'valor', 'pago', 'money', 'vale', 'ofreces']
-    
-    extra_content = ""
-    if any(k in msg_lower for k in keywords_planes):
-        extra_content = read_prompt('info_planes.txt')
-        # print("DEBUG: Inyectando info_planes.txt") # Descomentar para debug
-    
-    # 3. Inyectar información
-    # Asegúrate que en context.txt esté escrito literalmente {info_planes}
-    final_system_prompt = base_prompt.replace('{info_planes}', extra_content)
+    # LOG INICIAL: NUEVA PETICIÓN
+    print(f"\n{'='*60}")
+    print(f"🤖 [BOT] Nueva Petición Recibida")
+    print(f"👤 Mensaje Usuario: '{message}'")
+    print(f"📍 Pantalla Detectada: '{screen_name}'")
 
+    # A. Auth
+    is_authenticated = app.storage.user.get('authenticated', False)
+    
+    # B. MAPA DE PANTALLAS
+    screen_map = {
+        # --- PÚBLICAS ---
+        'main': 'screen_main.txt',
+        'login': 'screen_login.txt',
+        'signup': 'screen_signup.txt',
+        'planes': 'screen_planes.txt',
+        'methods': 'screen_adv_methods.txt',
+        'reset_pass': 'screen_reset_pass.txt',
+        
+        # --- ESTUDIANTE ---
+        'student_home': 'screen_student_home.txt',
+        'profile': 'screen_student_profile.txt',
+        'my_classes': 'screen_my_classes.txt',
+        'schedule': 'screen_schedule.txt',
+        'teacher_view': 'screen_teacher_view.txt',
+        'materials': 'screen_materials.txt',
+        'homework': 'screen_homework.txt',
+        'onboarding': 'screen_onboarding.txt',
+        'edit_profile': 'screen_edit_profile.txt',
+        'change_password': 'screen_change_password.txt',
+
+        # --- ADMIN ---
+        'admin_home': 'screen_admin_home.txt',
+        'admin_students': 'screen_admin_students.txt',
+        'admin_schedule': 'screen_admin_schedule.txt',
+        'admin_content': 'screen_admin_content.txt'
+    }
+
+    # C. SELECCIÓN DE CONTENIDO
+    dynamic_content = ""
+    loaded_file = "Ninguno (Default)" # Para el log
+    
+    if screen_name in screen_map:
+        filename = screen_map[screen_name]
+        
+        # Filtro de Seguridad
+        public_list = ['main', 'login', 'signup', 'planes', 'methods', 'reset_pass']
+        
+        if not is_authenticated and screen_name not in public_list:
+            dynamic_content = "El usuario no está logueado y trata de ver ayuda privada."
+            print(f"🚫 [SEGURIDAD] Acceso denegado a prompt privado: {filename}")
+        else:
+            dynamic_content = read_prompt(filename)
+            loaded_file = filename
+            print(f"📂 [CARGA] Prompt de Pantalla cargado: {filename}")
+    else:
+        dynamic_content = "El usuario está navegando por la plataforma."
+        print(f"⚠️ [ALERTA] ID de pantalla '{screen_name}' no encontrado en el mapa.")
+
+    # --- REGLA DE ORO: PRECIOS ---
+    msg_lower = message.lower()
+    keywords_planes = ['precio', 'costo', 'plan', 'valor', 'cuanto', 'pago', 'dolar', 'usd']
+    
+    if any(k in msg_lower for k in keywords_planes):
+        print(f"💰 [OVERRIDE] Tema de dinero detectado. Cambiando contexto a 'screen_planes.txt'")
+        dynamic_content = read_prompt('screen_planes.txt')
+        loaded_file = "screen_planes.txt (Forzado por Keyword)"
+
+    # D. INYECCIÓN
+    print(f"🧠 [CARGA] Leyendo contexto base: context.txt")
+    base_prompt = read_prompt('context.txt') 
+    
+    if not base_prompt:
+        base_prompt = "Eres un asistente útil. INFORMACIÓN ACTUAL: {dynamic_info}"
+
+    final_system_prompt = base_prompt.replace('{dynamic_info}', dynamic_content)
+
+    # E. LLAMADA A OPENAI
     try:
+        print(f"🚀 [API] Enviando solicitud a OpenAI... (Archivo final: {loaded_file})")
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -64,74 +131,66 @@ async def get_bot_response(message):
                 {"role": "user", "content": message}
             ],
             temperature=0.7,
-            max_tokens=250, # Reducido a 250 para controlar costos, 1000 es mucho para chat simple
+            max_tokens=300, 
         )
+        print(f"✅ [EXITO] Respuesta recibida ({len(response.choices[0].message.content)} caracteres)")
+        print(f"{'='*60}\n")
         return response.choices[0].message.content
     except Exception as e:
-        print(f"Error OpenAI: {e}")
-        return "Lo siento, mi conexión falló un momento. 🔌"
+        print(f"❌ [ERROR] Fallo en OpenAI: {e}")
+        return "Lo siento, tuve un problema de conexión. 🔌"
 
-# --- INTERFAZ VISUAL (FRONTEND) ---
+# ==============================================================================
+# UI (FRONTEND)
+# ==============================================================================
 
-def render_floating_chatbot():
-    """Dibuja el chat flotante"""
+def render_floating_chatbot(screen_name):
+    """
+    Dibuja el chat. ESTA FUNCIÓN NO GASTA TOKENS.
+    Solo prepara la interfaz visual.
+    """
     
-    # Configuración Fija
-    logo_img = '/static/icon/logo.png'
-    t_header = 'Chipi'
-    t_sub = 'Asistente IA'
-    t_placeholder = 'Escribe tu duda...'
-
-    # 1. VENTANA PRINCIPAL
+    logo_img = '/static/icon/logo.png' 
+    
+    # 1. CONTENEDOR
     with ui.element('div').classes('fixed bottom-24 right-6 w-[340px] h-[500px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden z-50 border border-slate-200 font-sans') as chat_window:
         chat_window.style('display: none; opacity: 0; transition: all 0.3s ease-in-out; transform: translateY(20px);')
 
-        # 2. CABECERA
+        # 2. HEADER
         with ui.row().classes('w-full bg-rose-600 p-4 justify-between items-center shrink-0 shadow-md'):
             with ui.row().classes('items-center gap-3'):
-                # Avatar
                 with ui.element('div').classes('w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-sm border-2 border-rose-400'):
                     ui.image(logo_img).classes('w-full h-full object-cover')
-                
-                # Textos
                 with ui.column().classes('gap-0 leading-tight'):
-                    ui.label(t_header).classes('text-white font-bold text-base tracking-wide')
+                    ui.label('Chipi AI').classes('text-white font-bold text-base tracking-wide')
                     with ui.row().classes('items-center gap-1'):
                         ui.element('div').classes('w-2 h-2 bg-green-400 rounded-full animate-pulse')
-                        ui.label(t_sub).classes('text-rose-100 text-xs font-medium')
+                        ui.label('En línea').classes('text-rose-100 text-xs font-medium')
             
-            # Botón Cerrar
             ui.button(icon='close', on_click=lambda: toggle_chat()).props('flat round dense text-color=white size=sm').classes('hover:bg-rose-700 rounded-full transition-colors')
 
-        # 3. ÁREA DE MENSAJES (Block Layout - Anti Crash)
+        # 3. AREA DE CHAT
         scroll_area = ui.element('div').classes('w-full flex-1 overflow-y-auto p-4 bg-slate-100 block space-y-4')
         
         def add_msg(text, is_user):
             with scroll_area:
                 row_align = 'justify-end' if is_user else 'justify-start'
-                
                 with ui.element('div').classes(f'flex w-full {row_align} items-end gap-2 animate-fade-in'):
-                    # Avatar Bot
                     if not is_user:
                         with ui.element('div').classes('w-8 h-8 min-w-[32px] rounded-full overflow-hidden bg-white shadow-sm'):
                             ui.image(logo_img).classes('w-full h-full object-cover')
-
-                    # Burbuja
-                    if is_user:
-                        bubble_style = 'bg-rose-600 text-white rounded-2xl rounded-tr-none shadow-md ml-12'
-                    else:
-                        bubble_style = 'bg-white text-slate-700 rounded-2xl rounded-tl-none shadow-sm mr-4'
-
-                    with ui.element('div').classes(f'px-4 py-2.5 {bubble_style}'):
+                    
+                    bubble_bg = 'bg-rose-600 text-white' if is_user else 'bg-white text-slate-700'
+                    bubble_shape = 'rounded-tr-none' if is_user else 'rounded-tl-none'
+                    
+                    with ui.element('div').classes(f'px-4 py-2.5 {bubble_bg} rounded-2xl {bubble_shape} shadow-sm max-w-[85%]'):
                         ui.label(text).classes('text-sm leading-relaxed break-words').style('white-space: pre-wrap;')
 
-        # Bienvenida
-        add_msg('¡Hola! 👋 Soy el asistente virtual. ¿En qué te ayudo hoy?', False)
+        add_msg('¡Hola! 👋 ¿En qué te ayudo?', False)
 
-        # 4. INPUT
+        # 4. INPUT (AQUÍ ES DONDE SE CONTROLA EL GASTO)
         with ui.row().classes('w-full p-3 bg-white border-t border-slate-200 items-center gap-2 shrink-0'):
-            input_text = ui.input(placeholder=t_placeholder).props('outlined dense borderless').classes('flex-grow bg-slate-50 rounded-full px-4 text-sm')
-            input_text.props('input-class="px-1" no-error-icon hide-bottom-space')
+            input_text = ui.input(placeholder='Escribe aquí...').props('outlined dense borderless').classes('flex-grow bg-slate-50 rounded-full px-4 text-sm')
             
             async def send():
                 msg = input_text.value
@@ -140,41 +199,47 @@ def render_floating_chatbot():
                 input_text.value = ''
                 input_text.disable()
                 
-                # Usuario
-                add_msg(msg, True)
-                ui.run_javascript(f'var el = getElement({scroll_area.id}); el.scrollTop = el.scrollHeight;')
+                add_msg(msg, True) # Muestra mensaje usuario
                 
-                # Animación Carga
+                # Loading...
                 with scroll_area:
                     with ui.element('div').classes('flex w-full justify-start items-end gap-2 mb-2') as loading_div:
                          with ui.element('div').classes('w-8 h-8 min-w-[32px] rounded-full overflow-hidden bg-white shadow-sm'):
                             ui.image(logo_img).classes('w-full h-full object-cover')
                          with ui.element('div').classes('bg-white text-rose-500 rounded-2xl rounded-tl-none px-4 py-2 shadow-sm'):
                              ui.spinner('dots', size='sm', color='rose-500')
-                ui.run_javascript(f'var el = getElement({scroll_area.id}); el.scrollTop = el.scrollHeight;')
-
-                # Llamada API
-                response = await get_bot_response(msg)
+                
+                # --- PUNTO CRÍTICO ---
+                # Recién AQUÍ llamamos a la API. 
+                # Cargar la página NO ejecuta esto. Solo dar click a enviar.
+                response = await get_bot_response(msg, screen_name)
+                # ---------------------
 
                 loading_div.delete()
                 add_msg(response, False)
-                
                 input_text.enable()
-                await asyncio.sleep(0.1)
-                ui.run_javascript(f'var el = getElement({scroll_area.id}); el.scrollTop = el.scrollHeight;')
-                ui.run_javascript(f'getElement({input_text.id}).focus()')
 
             input_text.on('keydown.enter', send)
-            ui.button(icon='send', on_click=send).props('flat round dense text-color=rose-600').classes('hover:bg-rose-50')
+            ui.button(icon='send', on_click=send).props('flat round dense text-color=rose-600')
 
-    # 5. TOGGLE Y BOTÓN FLOTANTE
+    # 5. BOTÓN FLOTANTE
     def toggle_chat():
         if chat_window.style.get('display') == 'none':
             chat_window.style('display: flex; opacity: 1; transform: translateY(0px);')
-            ui.run_javascript(f'setTimeout(() => getElement({input_text.id}).focus(), 100);')
-            ui.run_javascript(f'var el = getElement({scroll_area.id}); el.scrollTop = el.scrollHeight;')
         else:
             chat_window.style('display: none; opacity: 0; transform: translateY(20px);')
 
-    with ui.button(icon='smart_toy', on_click=toggle_chat).classes('fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg shadow-rose-300 z-50 bg-rose-600 hover:scale-110 transition-transform duration-300'):
-        ui.tooltip('Asistente IA').classes('bg-gray-800 text-white')
+    logo_img = '/static/icon/logo.png' 
+    with ui.button(on_click=toggle_chat) \
+            .props('round unelevated') \
+            .classes('fixed bottom-6 right-6 z-50 p-0 transition-transform duration-300 hover:scale-110 active:scale-90'):
+        
+        with ui.element('div').classes('w-16 h-16 rounded-full border-4 border-white shadow-2xl overflow-hidden relative ring-1 ring-rose-300 bg-white'):
+            
+            # La Imagen
+            ui.image(logo_img).classes('w-full h-full object-cover')
+
+            ui.element('div').classes('absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/30 to-transparent pointer-events-none')
+
+        # Tooltip
+        ui.tooltip('Chipi Asistente').classes('bg-gray-900 text-white text-xs font-bold py-1 px-2 rounded')

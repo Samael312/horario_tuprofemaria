@@ -5,7 +5,7 @@ from db.postgres_db import PostgresSession
 import logging
 # AÑADIDO: TeacherProfile para sacar el número
 from db.models import AsignedClasses, SchedulePref, TeacherProfile 
-
+from prompts.chatbot import render_floating_chatbot
 # Imports de Subpáginas
 from frontend.screen.MainScreen.Subpages import old_Student, new_Student 
 
@@ -139,3 +139,5 @@ def mainscreen():
 
     # --- TRIGGER DEL POPUP ---
     ui.timer(0.5, payment_dialog.open, once=True)
+
+    render_floating_chatbot('student_home')

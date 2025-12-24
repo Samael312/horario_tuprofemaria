@@ -244,8 +244,8 @@ def sync_google_calendar_logic(teacher_email):
             full_name = f"{local_class.name} {local_class.surname}"
             
             # Filtro Preply
-            if "- Preply Lesson" in full_name or local_class.package == "Preply":
-                continue 
+            if "- preply lesson" in full_name.lower() or local_class.package == "Preply":
+                continue
 
             current_date_prof = local_class.date_prof if local_class.date_prof else local_class.date
             

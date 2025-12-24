@@ -7,6 +7,7 @@ from components.headerAdmin import create_admin_screen
 from db.postgres_db import PostgresSession
 from db.sqlite_db import BackupSession
 from db.models import TeacherProfile, User 
+from prompts.chatbot import render_floating_chatbot
 
 # Configurar logger
 logging.basicConfig(level=logging.INFO)
@@ -443,6 +444,7 @@ def teacher_profile_view():
                                     .classes('flex-1 py-3 font-bold shadow-md bg-slate-800 text-white hover:bg-slate-900')
         
         render_reviews_area()
+        render_floating_chatbot('teacher_view')
 
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run()

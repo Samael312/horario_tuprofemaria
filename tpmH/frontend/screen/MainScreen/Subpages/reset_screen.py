@@ -5,6 +5,7 @@ from passlib.hash import pbkdf2_sha256
 from db.models import User
 from db.postgres_db import PostgresSession  # Fuente de la verdad
 from db.sqlite_db import BackupSession       # Respaldo
+from prompts.chatbot import render_floating_chatbot
 # ----------------------
 
 # =====================================================
@@ -161,3 +162,4 @@ def reset_password_screen():
 
     # Renderizar UI
     create_ui(render_reset_content)
+    render_floating_chatbot('change_password')

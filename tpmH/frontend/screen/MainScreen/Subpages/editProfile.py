@@ -13,6 +13,7 @@ from components.delete_rows import delete_selected_rows_v2
 from components.botones.button_dur import make_add_hour_button
 from components.share_data import *
 from collections import Counter
+from prompts.chatbot import render_floating_chatbot
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger(__name__)
@@ -266,6 +267,9 @@ def profile_edit():
                                 icon='delete',
                                 on_click=lambda: delete_selected_rows_v2(table, selection_state, id_column="hora")
                                 ).props('flat dense')
+            
+            # Renderizar el chatbot flotante
+            render_floating_chatbot('edit_profile')
 
             # =================================================
             # LÓGICA DE GUARDADO (NEON -> SQLITE)
@@ -397,10 +401,14 @@ def profile_edit():
                 # Botón Guardar
                 ui.button("Guardar Cambios", on_click=save_changes, icon='save')\
                     .props('push color=positive size=lg').classes('px-8')
+    
+        
 
     finally:
         # CERRAR LA SESIÓN DE CARGA INICIAL
         session.close()
+
+    
 
     # Lógica del botón agregar hora (vinculación final)
     make_add_hour_button(

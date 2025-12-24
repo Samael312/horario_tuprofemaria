@@ -2,6 +2,7 @@ from fastapi.responses import RedirectResponse
 from nicegui import app, ui
 from passlib.hash import pbkdf2_sha256
 import zoneinfo
+from prompts.chatbot import render_floating_chatbot
 
 # --- NUEVOS IMPORTS PARA LA NUEVA LÓGICA ---
 from db.models import User
@@ -212,3 +213,4 @@ def create_signup_screen():
 
     # Renderizar UI
     create_ui(render_signup_content)
+    render_floating_chatbot('signup') 

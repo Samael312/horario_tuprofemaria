@@ -11,7 +11,7 @@ class User(Base):
     name = Column(String, unique=False)
     surname = Column(String, unique=False)
     email = Column(String, unique=True)
-    goal = Column(String, unique=False, default="") #Nueva
+    goal = Column(String, unique=False, default="") 
     role = Column(String, unique=False, default="client")
     time_zone = Column(String, unique=False, default="UTC") # Zona horaria del usuario
     package = Column(String, unique=False, default="") 
