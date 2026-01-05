@@ -34,10 +34,10 @@ STATUS_OPTIONS = {
 }
 
 # Estados que se consideran "Finalizados" para el historial general
-FINALIZED_STATUSES = {'Completada', 'Cancelada', 'No Asistió'}
+FINALIZED_STATUSES = {'Completada', 'Cancelada', 'No Asistió', 'Finalizada'}
 
 # Estados que CONSUMEN una clase del paquete (para class_count)
-CONSUMED_STATUSES = {'Completada', 'No Asistió', 'Finalizada'}
+CONSUMED_STATUSES = {'Completada', 'No Asistió'}
 
 POSITIVE_STATUS = ["Libre", "Available", "Disponible"]
 
