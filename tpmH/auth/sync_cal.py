@@ -128,6 +128,7 @@ def sync_google_calendar_logic(teacher_email):
     count_ignored = 0
     count_preply_added = 0
     count_uploaded_google = 0
+    count_deleted= 0
     header_msg = "📅 Clase gestionada por Tuprofemaria"
     
     google_signatures = set()
@@ -230,8 +231,10 @@ def sync_google_calendar_logic(teacher_email):
                 # --- OPCIÓN DE BORRADO (COMENTADA) ---
                 # Si quisieras que lo que no está en tu BD se borre de Google (si no es Preply):
                 try:
+                     
                      logger.info(f"🗑️ Borrando evento fantasma de Google: {summary}")
                      service.events().delete(calendarId=teacher_email, eventId=event_id).execute()
+                     count_deleted += 1
                 except Exception as e_del:
                      logger.error(f"Error borrando: {e_del}")
                 # -------------------------------------
@@ -311,7 +314,7 @@ def sync_google_calendar_logic(teacher_email):
                 logger.error(f"  ❌ Error subiendo clase ID {local_class.id}: {e_post}")
                 continue
 
-        final_msg = f"Sync Finalizado: 🆕 {count_preply_added} Preplys agregadas, 🚫 {count_ignored} ignorados, ⬆️ {count_uploaded_google} subidos."
+        final_msg = f"Sync Finalizado: 🆕 {count_preply_added} Preplys agregadas, 🚫 {count_ignored} ignorados, ⬆️ {count_uploaded_google} subidos, 🗑️ {count_deleted} borradas"
         logger.info("==================================================")
         logger.info(final_msg)
         
