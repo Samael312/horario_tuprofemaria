@@ -136,15 +136,15 @@ def scheduleMaker():
         if not user: return "Sin Plan", 0, 0
         pkg_name = user.package or "None"
         limit = PACKAGE_LIMITS.get(pkg_name, 0)
-        now = datetime.now()
-        start_date_str = f"{now.year}-{str(now.month).zfill(2)}"
+        #now = datetime.now()
+        #start_date_str = f"{now.year}-{str(now.month).zfill(2)}"
         
         # MODIFICACIÓN: Excluir status que contengan "Prueba"
         current_usage = session.query(AsignedClasses).filter(
             AsignedClasses.username == user_id,
             AsignedClasses.status != 'Cancelled',
             AsignedClasses.status.notlike('Prueba_Pendiente'), # NO contar pruebas
-            AsignedClasses.date.startswith(start_date_str)
+            #AsignedClasses.date.startswith(start_date_str)
         ).count()
         return pkg_name, limit, current_usage
 
@@ -175,7 +175,7 @@ def scheduleMaker():
             # 2. Bloqueos (Clases ya agendadas + Bloqueos específicos)
             busy_classes = session.query(AsignedClasses).filter(
                 AsignedClasses.date == date_str, 
-                AsignedClasses.status != 'Cancelled'
+                AsignedClasses.status.in_(['Pendiente', 'Prueba_Pendiente'])
             ).all()
             
             blocked_intervals_prof = []

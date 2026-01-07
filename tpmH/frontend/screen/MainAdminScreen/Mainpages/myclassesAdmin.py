@@ -307,22 +307,22 @@ def my_classesAdmin():
                     finalized_count = session.query(AsignedClasses).filter(
                         AsignedClasses.username == cls.username,
                         AsignedClasses.status.in_(['Completada', 'Cancelada', 'No Asistió', 'Finalizada']),
-                        AsignedClasses.status.notlike('%Prueba%')
+                        AsignedClasses.status.notlike('%Prueba_Pendiente%')
                     ).count()
                     user.total_classes = finalized_count
 
                     # 2. CLASS COUNT (Paquete Mensual) - NO contamos pruebas
-                    try:
-                        c_date_obj = datetime.strptime(cls.date, '%Y-%m-%d')
-                        month_prefix = c_date_obj.strftime('%Y-%m')
-                    except:
-                        month_prefix = datetime.now().strftime('%Y-%m')
+                    #try:
+                    #    c_date_obj = datetime.strptime(cls.date, '%Y-%m-%d')
+                    #    month_prefix = c_date_obj.strftime('%Y-%m')
+                    #except:
+                    #    month_prefix = datetime.now().strftime('%Y-%m')
 
                     month_consumed = session.query(AsignedClasses).filter(
                         AsignedClasses.username == cls.username,
-                        AsignedClasses.date.startswith(month_prefix),
+                        #AsignedClasses.date.startswith(month_prefix),
                         AsignedClasses.status.in_(CONSUMED_STATUSES),
-                        AsignedClasses.status.notlike('%Prueba%')
+                        AsignedClasses.status.notlike('%Prueba_Pendiente%')
                     ).count()
 
                     pkg_limit = PACKAGE_LIMITS.get(user.package, 0)
