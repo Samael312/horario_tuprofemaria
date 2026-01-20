@@ -763,8 +763,7 @@ def my_classesAdmin():
                     ui.label(full_name).classes('text-lg font-bold text-slate-800 leading-tight')
                     
                     # --- BOTÓN REAGENDAR ---
-                    # Solo habilitado si no es historial
-                    if not is_history:
+                    if not c.status == ('Cancelada', 'No Asistió', 'Completada'):
                         ui.button('Reagendar', icon='edit_calendar', on_click=lambda: open_reschedule_dialog(c)) \
                             .props('flat dense color=blue-600 size=sm').classes('mt-2')
                 
