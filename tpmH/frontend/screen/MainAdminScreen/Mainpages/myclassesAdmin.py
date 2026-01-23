@@ -23,6 +23,39 @@ from components.timezone_converter import convert_student_to_teacher
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- SISTEMA DE CACHÉ GLOBAL ---
+class DataCache:
+    def __init__(self):
+        self.classes = None    # Almacenará la lista de clases
+        self.users = None      # Almacenará la lista de usuarios
+        self.last_fetch = None
+        self.ttl = timedelta(hours=2) # 2 Horas de vida
+
+    def get(self):
+        """Retorna (classes, users) si son válidos, sino None"""
+        if self.classes is None or self.last_fetch is None:
+            return None
+        
+        if datetime.now() - self.last_fetch > self.ttl:
+            logger.info("Caché expirada. Se requiere recarga DB.")
+            return None
+            
+        return self.classes, self.users
+
+    def set(self, classes, users):
+        self.classes = classes
+        self.users = users
+        self.last_fetch = datetime.now()
+        logger.info(f"Datos guardados en Caché RAM ({len(classes)} registros).")
+
+    def invalidate(self):
+        self.classes = None
+        self.users = None
+        logger.info("Caché invalidada manualmente.")
+
+# Instancia global (vive mientras corre la app)
+global_cache = DataCache()
+
 # Opciones de Estado para el Profesor
 STATUS_OPTIONS = {
     'Pendiente': {'color': 'orange', 'icon': 'schedule'},
@@ -52,7 +85,8 @@ def my_classesAdmin():
     filters = {
         'student': None,       # Texto libre (Nombre/Apellido)
         'region': None,     # Zona horaria seleccionada
-        'time_of_day': None # 'Mañana', 'Tarde', 'Noche'
+        'time_of_day': None, # 'Mañana', 'Tarde', 'Noche'
+        'date': None  # Fecha específica
     }
 
     # ==============================================================================
@@ -123,6 +157,7 @@ def my_classesAdmin():
             ui.notify(final_message, type=notif_type, icon='cloud_done', multi_line=True, close_button=True)
 
             # Refrescar la UI para mostrar los nuevos datos traídos de Google
+            global_cache.invalidate()
             refresh_ui()
 
         except Exception as e:
@@ -134,112 +169,113 @@ def my_classesAdmin():
     # 1. LOGICA DE DATOS
     def get_all_classes():
         """
-        Obtiene todas las clases, finaliza automáticamente las vencidas 
-        y extrae metadatos para filtros.
+        Versión OPTIMIZADA con Caché.
         """
         session = PostgresSession()
         try:
-            # VERIFICACIÓN DE SESIÓN (Usuario Actual)
+            # 1. Obtener Usuario Admin (Rápido, no cacheamos esto por si cambia de usuario)
             username = app.storage.user.get("username")
-            
-            # --- CORRECCIÓN ZONA HORARIA ---
-            # 1. Obtener zona del Admin
             admin_user = session.query(User).filter(User.username == username).first()
             admin_tz_str = admin_user.time_zone if admin_user and admin_user.time_zone else 'America/Caracas'
             try:
                 admin_tz = ZoneInfo(admin_tz_str)
             except:
                 admin_tz = ZoneInfo('America/Caracas') 
-
-            # 2. Calcular "Ahora" en la zona del profesor
+            
             now_admin_local = datetime.now(admin_tz).replace(tzinfo=None)
             now_date_str = now_admin_local.strftime('%Y-%m-%d')
 
-            all_classes = session.query(AsignedClasses).all()
-            users = session.query(User).all()
+            # ======================================================
+            # 2. LOGICA DE CACHÉ (AQUÍ ESTÁ LA MAGIA)
+            # ======================================================
+            cached_data = global_cache.get()
+            
+            if cached_data:
+                # HIT: Usamos datos de memoria
+                all_classes, users = cached_data
+            else:
+                # MISS: Consultamos BD (Lento)
+                logger.info("⏳ Consultando Base de Datos Completa...")
+                all_classes = session.query(AsignedClasses).all()
+                users = session.query(User).all()
+                
+                # CRÍTICO: Desconectar objetos de la sesión para que vivan en caché
+                session.expunge_all() 
+                
+                # Guardamos en caché
+                global_cache.set(all_classes, users)
+
+            # Mapeo de zonas horarias (Procesamiento Python rápido)
             user_tz_map = {u.username: (u.time_zone or 'UTC') for u in users}
             
             today_classes = []
-            upcoming_platform = [] # Lista separada Plataforma
-            upcoming_preply = []   # Lista separada Preply
+            upcoming_platform = [] 
+            upcoming_preply = []   
             history_classes = []
             
             unique_regions = set()
             unique_students = set()
             
-            classes_modified = False # Flag para saber si hay que hacer commit
+            ids_to_finalize = [] # Para actualización batch en DB
 
             for c in all_classes:
-                # 1. Adjuntar TimeZone y Datos para Filtros
+                # Adjuntar TimeZone y Datos para Filtros
                 c.student_tz = user_tz_map.get(c.username, 'UTC')
                 unique_regions.add(c.student_tz)
                 full_name = f"{c.name} {c.surname}".strip()
                 unique_students.add(full_name)
 
-                # 2. Datos de Tiempo (Profesor)
+                # Datos de Tiempo (Profesor)
                 p_date = getattr(c, 'date_prof', None) or c.date
                 
-                # --- AUTO-FINALIZACIÓN CORREGIDA ---
+                # --- AUTO-FINALIZACIÓN (Adaptada para Caché) ---
                 if c.status in ['Pendiente', 'Prueba_Pendiente']:
                     try:
                          if c.date_prof and c.start_prof_time:
                             t_str = str(c.start_prof_time).zfill(4)
                             c_start_prof = datetime.strptime(f"{c.date_prof} {t_str}", "%Y-%m-%d %H%M")
-                            
-                            # Calcular FIN de la clase
                             dur = int(c.duration) if c.duration else 60
                             c_end_prof = c_start_prof + timedelta(minutes=dur)
 
-                            # COMPARACIÓN: Solo finalizar si AHORA (Admin) > HORA_FIN (Clase)
                             if now_admin_local > c_end_prof:
+                                # Actualizamos objeto en memoria (para que se vea ya)
                                 c.status = 'Finalizada'
-                                classes_modified = True
-                    except Exception as e:
-                        logger.error(f"Error calculando fin de clase {c.id}: {e}")
+                                # Guardamos ID para actualizar DB real
+                                ids_to_finalize.append(c.id)
+                    except Exception: pass
                 
-                # ==========================================================
-                # CLASIFICACIÓN EN LISTAS
-                # ==========================================================
-                
-                # Calcular si es futuro para ordenamiento visual
+                # --- CLASIFICACIÓN (Igual que antes) ---
                 is_future = False
                 try:
                     if c.date_prof and c.start_prof_time:
                         t_str = str(c.start_prof_time).zfill(4)
                         c_start = datetime.strptime(f"{c.date_prof} {t_str}", "%Y-%m-%d %H%M")
-                        if c_start > now_admin_local:
-                            is_future = True
+                        if c_start > now_admin_local: is_future = True
                 except: pass
 
-                # Si está finalizada/completada/cancelada -> HISTORIAL
                 if c.status in FINALIZED_STATUSES or c.status == 'Finalizada':
                     history_classes.append(c)
-                
-                # Si es HOY y NO está finalizada
                 elif p_date == now_date_str:
                     today_classes.append(c)
-                
-                # Si es FUTURO (o pendiente de otra fecha futura)
                 elif is_future or (p_date > now_date_str and c.status not in FINALIZED_STATUSES):
-                    # --- SEPARACIÓN PREPLY VS PLATAFORMA ---
-                    if "- Preply lesson" in full_name:
-                        upcoming_preply.append(c)
-                    else:
-                        upcoming_platform.append(c)
-                
-                # Cualquier otra cosa -> Historial
+                    if "- Preply lesson" in full_name: upcoming_preply.append(c)
+                    else: upcoming_platform.append(c)
                 else:
                     history_classes.append(c)
 
-            # Si hubo cambios automáticos de estado, guardar en BD
-            if classes_modified:
+            # --- ESCRITURA EN DB DE CAMBIOS AUTOMÁTICOS ---
+            # Si detectamos clases vencidas, las actualizamos en DB sin borrar caché
+            if ids_to_finalize:
                 try:
+                    # Usamos una query UPDATE masiva que es muy eficiente
+                    session.query(AsignedClasses).filter(AsignedClasses.id.in_(ids_to_finalize)).update({AsignedClasses.status: 'Finalizada'}, synchronize_session=False)
                     session.commit()
-                    logger.info("Se han finalizado clases automáticamente por horario vencido.")
+                    logger.info(f"✅ Se auto-finalizaron {len(ids_to_finalize)} clases en DB.")
                 except Exception as e:
-                    logger.error(f"Error auto-finalizando clases: {e}")
+                    logger.error(f"Error auto-finalizando: {e}")
                     session.rollback()
 
+            # Ordenamiento (Rápido en Python)
             def sort_key_prof(x):
                 d = getattr(x, 'date_prof', None) or x.date or "9999-99-99"
                 t = x.start_prof_time if getattr(x, 'start_prof_time', None) is not None else x.start_time or 0
@@ -250,7 +286,6 @@ def my_classesAdmin():
             upcoming_preply.sort(key=sort_key_prof)
             history_classes.sort(key=sort_key_prof, reverse=True)
             
-            # Retornamos las nuevas listas separadas
             return today_classes, upcoming_platform, upcoming_preply, history_classes, sorted(list(unique_regions)), sorted(list(unique_students)), all_classes
             
         except Exception as e:
@@ -266,6 +301,7 @@ def my_classesAdmin():
         f_student = filters['student']
         f_region = filters['region']
         f_time = filters['time_of_day']
+        f_date = filters['date']
 
         for c in class_list:
             # 1. Filtro Estudiante (Selector)
@@ -287,6 +323,12 @@ def my_classesAdmin():
                 if f_time == 'Mañana' and t >= 1200: continue
                 if f_time == 'Tarde' and not (1200 <= t < 1900): continue
                 if f_time == 'Noche' and t < 1900: continue
+            
+            if f_date:
+                # Obtenemos la fecha real (Profesor o base)
+                c_date = getattr(c, 'date_prof', None) or c.date
+                if c_date != f_date:
+                    continue
 
             filtered.append(c)
         return filtered
@@ -331,6 +373,7 @@ def my_classesAdmin():
                     session.add(user)
 
                 session.commit()
+                global_cache.invalidate()
                 
                 # Backup SQLite (Misma lógica)
                 try:
@@ -416,6 +459,7 @@ def my_classesAdmin():
                 cls.start_prof_time = new_prof_time_int
                 cls.end_prof_time = new_prof_end_int
                 session.commit()
+                global_cache.invalidate()
 
                 # 5. Actualizar Backup SQLite
                 try:
@@ -873,7 +917,7 @@ def my_classesAdmin():
                 with ui.row().classes('items-center gap-3'):
                     ui.button('Sincronizar', on_click=run_sync, icon='sync_alt') \
                         .props('flat no-caps').classes('text-slate-700 bg-white border border-slate-200 rounded-full px-5 py-2 text-sm font-semibold shadow-sm')
-                    ui.button(icon='refresh', on_click=refresh_ui).props('flat round dense').classes('text-slate-400 hover:text-slate-700')
+                    ui.button(icon='refresh', on_click=lambda: (global_cache.invalidate(), refresh_ui())).props('flat round dense').tooltip('Recargar desde la Nube')
 
             # --- SECCIÓN DE KPIs (TABS) ---
             with ui.card().classes('w-full p-0 rounded-xl bg-white border border-slate-100 shadow-sm overflow-hidden'):
@@ -904,17 +948,47 @@ def my_classesAdmin():
                 with ui.row().classes('w-full items-center gap-4 flex-wrap'):
                     ui.icon('filter_list', color='slate-400')
                     
+                    # 1. FILTRO DE FECHA (Mejorado)
+                    # Usamos 'outlined' y 'dense' para que se vea como una caja, no una línea
+                   # --- FILTRO FECHA CORREGIDO ---
+                    with ui.input('Fecha').bind_value(filters, 'date').props('outlined dense mask="####-##-##"').classes('w-56') as date_input:
+                        
+                        # 1. Definimos el menú PRIMERO para evitar errores de referencia
+                        with ui.menu().props('no-parent-event') as menu_date:
+                            ui.date().bind_value(filters, 'date').on('update:model-value', lambda: (refresh_ui(), menu_date.close()))
+
+                        # 2. Agregamos AMBOS iconos en un solo bloque 'append'
+                        with date_input.add_slot('append'):
+                            # Icono Calendario
+                            ui.icon('event').classes('cursor-pointer text-slate-500 hover:text-indigo-600').on('click', menu_date.open)
+                            
+                            # Botón X para borrar (Visible solo si hay fecha seleccionada)
+                            def clear_date():
+                                filters['date'] = None
+                                date_input.set_value(None) # Forzamos limpieza visual inmediata
+                                refresh_ui()
+                                
+                            ui.button(icon='cancel', on_click=clear_date) \
+                                .props('flat round dense size=xs color=slate') \
+                                .bind_visibility_from(filters, 'date')
+
+                    # 2. OTROS FILTROS (Asegurando estilo consistente)
+                    
                     stud_opts = ['Todos'] + available_students
                     ui.select(options=stud_opts, value=filters['student'] or 'Todos', label='Estudiante', with_input=True) \
+                        .props('outlined dense') \
                         .bind_value(filters, 'student').on('update:model-value', refresh_ui).classes('flex-1 min-w-[200px]')
                     
                     region_opts = ['Todas'] + available_regions
                     ui.select(options=region_opts, value=filters['region'] or 'Todas', label='Región') \
+                        .props('outlined dense') \
                         .bind_value(filters, 'region').on('update:model-value', refresh_ui).classes('w-48')
                     
                     time_opts = ['Todos', 'Mañana', 'Tarde', 'Noche']
                     ui.select(options=time_opts, value=filters['time_of_day'] or 'Todos', label='Horario') \
+                        .props('outlined dense') \
                         .bind_value(filters, 'time_of_day').on('update:model-value', refresh_ui).classes('w-40')
+                
 
             # --- LISTAS DE CLASES ---
             
