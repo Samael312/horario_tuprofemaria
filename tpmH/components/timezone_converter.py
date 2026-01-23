@@ -4,6 +4,7 @@ from db.postgres_db import PostgresSession
 from db.models import User, ScheduleProf, AsignedClasses, ScheduleProfEsp
 from zoneinfo import ZoneInfo
 import logging
+import httpx
 
 # Configura aquí la zona horaria base de la profesora
 session = PostgresSession()
@@ -93,3 +94,51 @@ def get_slots_in_student_tz(teacher_slots, date_str, student_tz_str):
         return teacher_slots
         
     return sorted(list(set(student_slots)))
+
+# --- NUEVO: Caché para guardar IPs y no consultar la API repetidamente ---
+_tz_cache = {}
+
+async def get_timezone_from_ip(ip_address: str) -> str:
+    """
+    Consulta asíncrona a ip.guide para detectar zona horaria.
+    Incluye caché y manejo de localhost.
+    Retorna la zona horaria (str) o 'UTC' si falla.
+    """
+    # 1. Verificar Caché
+    if ip_address in _tz_cache:
+        return _tz_cache[ip_address]
+
+    # 2. Verificar Localhost (GeoIP falla en local)
+    if not ip_address or ip_address in ('127.0.0.1', 'localhost', '::1'):
+        logger.warning("IP local detectada, usando UTC por defecto.")
+        return "UTC"
+
+    # 3. Consultar API
+    url = f"https://ip.guide/{ip_address}"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(url)
+            
+            if response.status_code == 200:
+                data = response.json()
+
+                logger.info(f"RESPUESTA IP.GUIDE: {data}")
+
+                location = data.get('location', {})
+                detected_tz = location.get('timezone')
+                
+                # Si no está en location, intentamos en la raíz por si acaso
+                if not detected_tz:
+                    detected_tz = data.get('timezone')
+
+                if detected_tz:
+                    _tz_cache[ip_address] = detected_tz
+                    return detected_tz
+            
+            logger.warning(f"ip.guide retornó status {response.status_code}")
+
+    except Exception as e:
+        logger.error(f"Error conectando con ip.guide: {e}")
+
+    # Fallback si todo falla
+    return "UTC"
