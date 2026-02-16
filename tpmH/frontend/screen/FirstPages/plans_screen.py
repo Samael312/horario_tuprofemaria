@@ -21,25 +21,25 @@ def get_plans(lang):
     return [
         {
             'id': 'Básico', 
-            'name': 'Básico' if is_es else 'Basic', 'price': '$45', 'period': '/mes' if is_es else '/mo',
+            'name': 'Básico' if is_es else 'Basic', 'price': '$57', 'period': '/mes' if is_es else '/mo',
             'features': ['4 Clases al mes' if is_es else '4 Classes/mo', 'Modalidad Online' if is_es else 'Online Mode', 'Material incluido' if is_es else 'Material included', 'Conversacionales' if is_es else 'Conversational','Sin presión' if is_es else 'Low-pressure'],
             'color': 'slate', 'recommended': False
         },
         {
             'id': 'Personalizado',
-            'name': 'Personalizado' if is_es else 'Customized', 'price': '$80', 'period': '/mes' if is_es else '/mo',
+            'name': 'Personalizado' if is_es else 'Customized', 'price': '$96', 'period': '/mes' if is_es else '/mo',
             'features': ['8 Clases al mes' if is_es else '8 Classes/mo', 'Modalidad Online' if is_es else 'Online Mode','Conversacionales' if is_es else 'Conversational' ,'100% Personalizadas' if is_es else '100% Personalized', 'Progreso/flexibilidad' if is_es else 'Progress/flexibility'],
             'color': 'rose', 'recommended': True
         },
         {
             'id': 'Intensivo',
-            'name': 'Intensivo' if is_es else 'Intensive', 'price': '$115', 'period': '/mes' if is_es else '/mo',
+            'name': 'Intensivo' if is_es else 'Intensive', 'price': '$138', 'period': '/mes' if is_es else '/mo',
             'features': ['12 Clases al mes' if is_es else '12 Classes/mo', 'Modalidad Online' if is_es else 'Online Mode','Conversacionales' if is_es else 'Conversational' ,'Prep.Exámenes' if is_es else 'Exam preparation', 'Avance rápido' if is_es else 'Fast progress'],
             'color': 'purple', 'recommended': False
         },
         {
             'id': 'Flexible',
-            'name': 'Flexible' if is_es else 'Flexible', 'price': '$10', 'period': '/clase' if is_es else '/class',
+            'name': 'Flexible' if is_es else 'Flexible', 'price': '$12', 'period': '/clase' if is_es else '/class',
             'features': ['Paga individual' if is_es else 'Pay individualy', 'Modalidad Online' if is_es else 'Online Mode', 'Conversacionales' if is_es else 'Conversational','Horario flexible' if is_es else 'Flexible schedule', 'Sin pagos mensuales' if is_es else 'No monthly pay'],
             'color': 'blue', 'recommended': False
         }
