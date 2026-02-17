@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 # Asegúrate de que estos imports existan en tu proyecto, si no, coméntalos para probar
 from db.postgres_db import PostgresSession
 from db.models import User
+import asyncio
 from prompts.chatbot import render_floating_chatbot
 
 def create_ui(content_function=None):
@@ -57,7 +58,10 @@ def adv_method():
                     app.storage.user['temp_payment_methods'] = selected
                     
                     ui.notify('Selección guardada. Continuando al registro...', type='positive')
-                    ui.timer(0.5, lambda: ui.navigate.to('/signup'))
+                    
+                    # Pausamos medio segundo y luego navegamos
+                    await asyncio.sleep(0.5) 
+                    ui.navigate.to('/signup')
                     
                 except Exception as e:
                     ui.notify(f'Error al guardar en memoria: {str(e)}', type='negative')
