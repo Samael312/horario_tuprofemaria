@@ -336,7 +336,7 @@ def my_classes():
                     duration = int(float(c.duration)) if c.duration else 60
                 except: duration = 60
                 
-                step = 60
+                step = 30
                 
                 def to_minutes(hhmm): return (hhmm // 100) * 60 + (hhmm % 100)
                 def to_hhmm_int(minutes): return ((minutes // 60) * 100) + (minutes % 60)

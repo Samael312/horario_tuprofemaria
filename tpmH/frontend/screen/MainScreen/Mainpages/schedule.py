@@ -218,7 +218,7 @@ def scheduleMaker():
                     else: 
                         prof_slots_free.append(to_hhmm(slot_start))
                     
-                    curr_min += duration_mins 
+                    curr_min += 30
             
             # 4. Convertir a Hora Estudiante
             student_tz = get_user_timezone()
