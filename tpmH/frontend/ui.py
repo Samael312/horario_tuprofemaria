@@ -27,6 +27,7 @@ from frontend.screen.MainScreen.Mainpages.work import student_homework_page
 from frontend.screen.FirstPages.adv_method import adv_method
 from frontend.screen.FirstPages.plans_screen import plan_screen
 from frontend.screen.FirstPages.reset_pass import reset_screen
+from frontend.screen.MainAdminScreen.Mainpages.ping_db import app as ping_db_app    
 
 def init_ui():
     """Puente entre las pantallas de la app."""
@@ -71,3 +72,4 @@ def init_ui():
         teacherAdmin()
         materials_page()
         homework_page()
+        ping_db_app()
