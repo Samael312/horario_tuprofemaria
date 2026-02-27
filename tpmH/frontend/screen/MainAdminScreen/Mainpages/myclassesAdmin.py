@@ -167,15 +167,14 @@ def my_classesAdmin():
             ui.notify(f'Error crítico: {str(e)}', type='negative')
     
     # 1. LOGICA DE DATOS
-    def get_all_classes():
+    def _get_all_classes_sync(admin_username):
         """
-        Versión OPTIMIZADA con Caché.
+        Versión OPTIMIZADA con Caché (Se ejecuta en un hilo separado).
         """
         session = PostgresSession()
         try:
-            # 1. Obtener Usuario Admin (Rápido, no cacheamos esto por si cambia de usuario)
-            username = app.storage.user.get("username")
-            admin_user = session.query(User).filter(User.username == username).first()
+            # 1. Obtener Usuario Admin (Recibido como parámetro)
+            admin_user = session.query(User).filter(User.username == admin_username).first()
             admin_tz_str = admin_user.time_zone if admin_user and admin_user.time_zone else 'America/Caracas'
             try:
                 admin_tz = ZoneInfo(admin_tz_str)
@@ -186,7 +185,7 @@ def my_classesAdmin():
             now_date_str = now_admin_local.strftime('%Y-%m-%d')
 
             # ======================================================
-            # 2. LOGICA DE CACHÉ (AQUÍ ESTÁ LA MAGIA)
+            # 2. LOGICA DE CACHÉ
             # ======================================================
             cached_data = global_cache.get()
             
@@ -216,19 +215,17 @@ def my_classesAdmin():
             unique_regions = set()
             unique_students = set()
             
-            ids_to_finalize = [] # Para actualización batch en DB
+            ids_to_finalize = []
 
             for c in all_classes:
-                # Adjuntar TimeZone y Datos para Filtros
                 c.student_tz = user_tz_map.get(c.username, 'UTC')
                 unique_regions.add(c.student_tz)
                 full_name = f"{c.name} {c.surname}".strip()
                 unique_students.add(full_name)
 
-                # Datos de Tiempo (Profesor)
                 p_date = getattr(c, 'date_prof', None) or c.date
                 
-                # --- AUTO-FINALIZACIÓN (Adaptada para Caché) ---
+                # --- AUTO-FINALIZACIÓN ---
                 if c.status in ['Pendiente', 'Prueba_Pendiente']:
                     try:
                          if c.date_prof and c.start_prof_time:
@@ -238,13 +235,11 @@ def my_classesAdmin():
                             c_end_prof = c_start_prof + timedelta(minutes=dur)
 
                             if now_admin_local > c_end_prof:
-                                # Actualizamos objeto en memoria (para que se vea ya)
                                 c.status = 'Finalizada'
-                                # Guardamos ID para actualizar DB real
                                 ids_to_finalize.append(c.id)
                     except Exception: pass
                 
-                # --- CLASIFICACIÓN (Igual que antes) ---
+                # --- CLASIFICACIÓN ---
                 is_future = False
                 try:
                     if c.date_prof and c.start_prof_time:
@@ -263,19 +258,15 @@ def my_classesAdmin():
                 else:
                     history_classes.append(c)
 
-            # --- ESCRITURA EN DB DE CAMBIOS AUTOMÁTICOS ---
-            # Si detectamos clases vencidas, las actualizamos en DB sin borrar caché
+            # --- ESCRITURA EN DB ---
             if ids_to_finalize:
                 try:
-                    # Usamos una query UPDATE masiva que es muy eficiente
                     session.query(AsignedClasses).filter(AsignedClasses.id.in_(ids_to_finalize)).update({AsignedClasses.status: 'Finalizada'}, synchronize_session=False)
                     session.commit()
-                    logger.info(f"✅ Se auto-finalizaron {len(ids_to_finalize)} clases en DB.")
                 except Exception as e:
                     logger.error(f"Error auto-finalizando: {e}")
                     session.rollback()
 
-            # Ordenamiento (Rápido en Python)
             def sort_key_prof(x):
                 d = getattr(x, 'date_prof', None) or x.date or "9999-99-99"
                 t = x.start_prof_time if getattr(x, 'start_prof_time', None) is not None else x.start_time or 0
@@ -293,6 +284,13 @@ def my_classesAdmin():
             return [], [], [], [], [], [], []
         finally:
             session.close()
+
+    async def get_all_classes():
+        """ Envoltorio asíncrono que envía la tarea a un hilo secundario """
+        # Sacamos el username en el hilo principal (NiceGUI) de forma segura
+        admin_username = app.storage.user.get("username")
+        # Mandamos la ejecución a un hilo para no bloquear la interfaz web
+        return await asyncio.to_thread(_get_all_classes_sync, admin_username)
     
     def filter_list(class_list):
         """Aplica los filtros activos a una lista."""
@@ -874,12 +872,58 @@ def my_classesAdmin():
                     with ui.row().classes('items-center gap-1'):
                         ui.icon(status_config['icon'], size='xs', color=status_config['color'])
                         ui.label(current_status.replace('_', ' ')).classes(f'text-xs font-bold text-{status_config["color"]}-600')
+    # Objeto para controlar el estado de la página
+    class PageState:
+        loading = True
+        data = None
+
+    state = PageState()
 
     @ui.refreshable
     def render_content():
-        # 1. Obtener Datos
-        # Nota: Agregamos las listas separadas al retorno de get_all_classes
-        today_raw, up_platform, up_preply, history_raw, available_regions, available_students, all_classes_raw = get_all_classes()
+        # SI ESTÁ CARGANDO: Mostramos el Esqueleto animado
+        if state.loading:
+            with ui.column().classes('w-full max-w-6xl mx-auto p-4 md:p-8 gap-6 animate-pulse'):
+                # Falso Header
+                with ui.row().classes('w-full justify-between items-center py-4 border-b border-slate-200'):
+                    with ui.row().classes('items-center gap-3'):
+                        # Círculo de perfil más notable (pink-200 en lugar de 50)
+                        ui.skeleton(type='circle').classes('w-12 h-12 bg-pink-200')
+                        with ui.column().classes('gap-2'):
+                            # Textos más oscuros
+                            ui.skeleton(type='text').classes('w-48 h-6 bg-slate-400')
+                            ui.skeleton(type='text').classes('w-32 h-3 bg-slate-300')
+                    # Botón superior más visible
+                    ui.skeleton(type='rect').classes('w-32 h-10 rounded-full bg-slate-300 shadow-sm')
+                
+                # Falso Panel de KPIs (Tarjetas superiores)
+                with ui.row().classes('w-full gap-4'):
+                    ui.skeleton(type='rect').classes('flex-1 h-24 rounded-xl bg-slate-200 shadow-sm border border-slate-300')
+                    ui.skeleton(type='rect').classes('flex-1 h-24 rounded-xl bg-slate-200 shadow-sm border border-slate-300')
+                    ui.skeleton(type='rect').classes('flex-1 h-24 rounded-xl bg-slate-200 shadow-sm border border-slate-300')
+                
+                # Falso Buscador
+                ui.skeleton(type='rect').classes('w-full h-16 rounded-xl mt-2 bg-slate-300 shadow-sm')
+                
+                # Falsa Tabla (Ahora dividida en filas para que el efecto visual sea más impactante)
+                with ui.column().classes('w-full mt-4 bg-slate-100 rounded-xl p-4 gap-4 border border-slate-200 shadow-sm'):
+                    ui.skeleton(type='rect').classes('w-full h-10 bg-slate-300 rounded-lg') # Encabezado de la tabla
+                    ui.skeleton(type='rect').classes('w-full h-16 bg-slate-200 rounded-lg') # Fila 1
+                    ui.skeleton(type='rect').classes('w-full h-16 bg-slate-200 rounded-lg') # Fila 2
+                    ui.skeleton(type='rect').classes('w-full h-16 bg-slate-200 rounded-lg') # Fila 3
+            return
+        
+        if not state.data:
+            with ui.column().classes('w-full max-w-2xl mx-auto mt-12 p-8 items-center justify-center bg-red-50 rounded-2xl border border-red-100'):
+                ui.icon('wifi_off', size='4rem').classes('text-red-400 mb-4')
+                ui.label('No se pudieron cargar los datos').classes('text-2xl font-bold text-slate-800 text-center')
+                ui.label('Hubo un problema al conectar con la base de datos o la respuesta está vacía.').classes('text-slate-600 text-center mb-6')
+                # Este botón llama a la función refresh_ui que ya tienes creada abajo
+                ui.button('Intentar de nuevo', icon='refresh', on_click=refresh_ui).classes('bg-red-500 text-white rounded-xl px-6 py-2 shadow-sm')
+            return
+        
+        # 1. Obtener Datos 
+        today_raw, up_platform, up_preply, history_raw, available_regions, available_students, all_classes_raw = state.data
         
         # 2. Filtrar Datos (Aplicar filtros a cada lista)
         filtered_today = filter_list(today_raw)
@@ -1037,7 +1081,26 @@ def my_classesAdmin():
                     for c in filtered_history:
                         render_admin_class_card(c, is_history=True)
 
-    def refresh_ui():
+    async def load_and_render():
+        # Si NO hay caché disponible, forzamos mostrar el esqueleto
+        if global_cache.get() is None:
+            state.loading = True
+            render_content.refresh()
+            # CRÍTICO: Esta micropausa obliga a NiceGUI a mandar el esqueleto a la pantalla YA
+            await asyncio.sleep(0.1) 
+            
+        # Esperamos a la Base de Datos (en segundo plano)
+        state.data = await get_all_classes()
+        
+        # Apagamos el esqueleto y mostramos los datos
+        state.loading = False
         render_content.refresh()
 
-    render_content()
+    def refresh_ui():
+        # Delegamos la recarga al bucle de eventos para no bloquear la UI al hacer clics
+        ui.timer(0, load_and_render, once=True)
+
+    # 1. Dibujamos el esqueleto inmediatamente al entrar (síncrono)
+    render_content() 
+    # 2. Una fracción de segundo después, iniciamos la carga pesada en el fondo
+    ui.timer(0.1, load_and_render, once=True)

@@ -141,6 +141,7 @@ if __name__ in {'__main__', '__mp_main__'}:
     ui.run(
         title="Tuprofemaria: Tu clase, tu ritmo, tu ingles",
         reload=True,
+        reconnect_timeout=30,
         storage_secret=os.environ.get('STORAGE_SECRET', 'clave_secreta_default_segura'),
         favicon=favicon_path,
         host='0.0.0.0',
