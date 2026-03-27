@@ -1,10 +1,14 @@
-from nicegui import ui, app
+import os
+from nicegui import ui, app, run
 from db.postgres_db import PostgresSession
 from db.models import Material, StudentMaterial
 from components.header import create_main_screen 
-import os
 from prompts.chatbot import render_floating_chatbot
 
+from api.tts_api import get_audio_url 
+
+# Caché en memoria para evitar repintar la UI
+audio_cache = {}
 
 @ui.page('/materials')
 def student_materials_page():
@@ -17,9 +21,10 @@ def student_materials_page():
 
     username = app.storage.user.get('username')
 
-    # --- HELPER: Detectar Tipo de Archivo ---
     def get_file_type_info(filename):
-        """Devuelve configuración visual según la extensión"""
+        if filename == "[Set de Audio Interactivo]":
+            return {'type': 'vocab', 'icon': 'record_voice_over', 'color': 'purple-100', 'text': 'purple-600'}
+            
         ext = os.path.splitext(filename)[1].lower()
         if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
             return {'type': 'image', 'icon': None, 'color': None}
@@ -49,11 +54,12 @@ def student_materials_page():
                     'category': mat.category,
                     'file': mat.content,
                     'progress': st_mat.progress, 
-                    'level': mat.level
+                    'level': mat.level,
+                    'tags': mat.tags or {}
                 })
             return data
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error cargando materiales: {e}")
             return []
         finally:
             session.close()
@@ -71,6 +77,86 @@ def student_materials_page():
         finally:
             session.close()
 
+
+    # =========================================================
+    # LÓGICA DE POPUP (CON BARRA DE PORCENTAJE)
+    # =========================================================
+    async def open_vocab_dialog(title, words):
+        # 'persistent' evita que el estudiante cierre el popup por accidente haciendo clic afuera mientras carga
+        dialog = ui.dialog().props('persistent') 
+        
+        with dialog, ui.card().classes('min-w-[350px] max-w-[450px] p-0 rounded-2xl shadow-xl overflow-hidden'):
+            
+            # --- CABECERA ESTILIZADA ---
+            with ui.row().classes('w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-4 justify-between items-center'):
+                with ui.row().classes('items-center gap-2'):
+                    ui.icon('record_voice_over', color='white', size='sm')
+                    ui.label(f'Audios: {title}').classes('text-lg font-bold text-white line-clamp-1')
+                # Botón de cerrar 
+                ui.button(icon='close', on_click=dialog.close).props('flat round size=sm color=white')
+
+            # --- CONTENEDOR PRINCIPAL ---
+            with ui.column().classes('p-6 w-full'):
+                
+                # ZONA 1: Animación de carga de audios
+                with ui.column().classes('items-center justify-center py-8 w-full gap-4') as loading_area:
+                    # Spinner animado nativo de NiceGUI con forma de barras de audio
+                    ui.spinner('audio', size='3.5em', color='purple')
+                    ui.label('Generando voces de Google...').classes('text-sm text-purple-700 font-medium animate-pulse')
+                    
+                    # Barra de progreso minimalista (más delgada y elegante)
+                    progress_bar = ui.linear_progress(value=0.0).props('color=purple rounded size=6px')
+                    progress_label = ui.label('0%').classes('text-xs text-slate-400 font-bold')
+
+                # ZONA 2: Contenedor de botones (Oculto al inicio)
+                buttons_area = ui.row().classes('w-full gap-3 justify-center max-h-[50vh] overflow-y-auto')
+                buttons_area.set_visibility(False)
+
+        dialog.open()
+
+        # --- BUCLE DE VERIFICACIÓN / DESCARGA ---
+        local_urls = {}
+        total_words = len(words)
+        for i, word in enumerate(words):
+            url = await run.io_bound(get_audio_url, word, "en-US")
+            if url:
+                local_urls[word] = url
+            
+            # Actualizamos la barra suavemente
+            if total_words > 0:
+                pct = (i + 1) / total_words
+                progress_bar.value = pct
+                progress_label.text = f"{int(pct * 100)}%"
+
+        # Terminó la carga: Ocultamos el spinner y mostramos los botones
+        loading_area.set_visibility(False)
+        buttons_area.set_visibility(True)
+        
+        with buttons_area:
+            if not words:
+                ui.label('No hay palabras registradas en este set.').classes('text-sm text-slate-400 italic py-4')
+            else:
+                for word in words:
+                    # Función asíncrona segura para la reproducción
+                    async def play_word_audio(w=word):
+                        final_url = await run.io_bound(get_audio_url, w, "en-US")
+                        if final_url:
+                            ui.run_javascript(f"new Audio('{final_url}').play()")
+                        else:
+                            ui.notify(f'Error al reproducir "{w}"', type='negative')
+
+                    # --- DISEÑO DE LOS BOTONES DE PALABRAS ---
+                    if word in local_urls:
+                        # Le añadimos sombras y un efecto hover (escala) de Tailwind
+                        ui.button(word, icon='volume_up', on_click=play_word_audio) \
+                            .classes('transition-transform hover:-translate-y-1 hover:shadow-md shadow-sm') \
+                            .props('rounded outline size=md color=purple no-caps')
+                    else:
+                        ui.button(word, icon='error_outline') \
+                            .classes('shadow-sm') \
+                            .props('rounded outline size=md color=red no-caps').tooltip('Fallo al descargar')
+
+
     # --- UI PRINCIPAL ---
     with ui.column().classes('w-full max-w-7xl mx-auto p-4 md:p-8 gap-8'):
         
@@ -79,7 +165,7 @@ def student_materials_page():
                 ui.icon('school', size='lg', color='indigo-600')
             with ui.column().classes('gap-0'):
                 ui.label('Mis Materiales').classes('text-2xl font-bold text-slate-800')
-                ui.label('Recursos de estudio').classes('text-sm text-slate-500')
+                ui.label('Recursos de estudio y Vocabulario interactivo').classes('text-sm text-slate-500')
 
         @ui.refreshable
         def materials_grid():
@@ -94,14 +180,16 @@ def student_materials_page():
                     is_done = item['progress'] == 'Completed'
                     file_info = get_file_type_info(item['file'])
                     
-                    # Estilo de borde si está completado
-                    card_classes = 'w-full p-0 rounded-2xl shadow-sm border transition-all hover:shadow-md overflow-hidden '
-                    card_classes += 'border-green-300 ring-2 ring-green-100' if is_done else 'border-slate-200 bg-white'
+                    card_classes = 'w-full p-0 rounded-2xl shadow-sm border transition-all hover:shadow-md overflow-hidden flex flex-col '
+                    if item['category'] == 'Vocabulary':
+                        card_classes += 'border-green-300 ring-2 ring-green-100' if is_done else 'border-purple-200 bg-purple-50/30'
+                    else:
+                        card_classes += 'border-green-300 ring-2 ring-green-100' if is_done else 'border-slate-200 bg-white'
 
                     with ui.card().classes(card_classes):
                         
-                        # --- ZONA DE PREVISUALIZACIÓN (PORTADA) ---
-                        with ui.element('div').classes('w-full h-32 flex items-center justify-center relative'):
+                        # ZONA DE PORTADA
+                        with ui.element('div').classes('w-full h-24 flex items-center justify-center relative bg-white'):
                             if file_info['type'] == 'image':
                                 ui.image(f"/uploads/{item['file']}").classes('w-full h-full object-cover')
                             else:
@@ -110,29 +198,49 @@ def student_materials_page():
                             
                             ui.label(item['level']).classes('absolute top-2 right-2 bg-white/90 px-2 py-1 rounded-md text-xs font-bold shadow-sm')
 
-                        # --- CONTENIDO ---
-                        with ui.column().classes('p-4 w-full gap-2'):
-                            ui.label(item['category']).classes('text-[10px] font-bold text-indigo-500 uppercase tracking-widest')
+                        # CONTENIDO DE TARJETA
+                        with ui.column().classes('p-4 w-full flex-grow gap-2'):
+                            badge_color = 'text-purple-500' if item['category'] == 'Vocabulary' else 'text-indigo-500'
+                            ui.label(item['category']).classes(f'text-[10px] font-bold {badge_color} uppercase tracking-widest')
                             ui.label(item['title']).classes('font-bold text-slate-800 leading-tight text-sm line-clamp-2 h-10')
-                            
                             ui.separator()
                             
-                            # --- BARRA DE ACCIONES ---
-                            with ui.row().classes('w-full justify-between items-center'):
+                            # ==========================================
+                            # ETIQUETA DE PALABRAS Y BOTÓN DE AUDIOS
+                            # ==========================================
+                            if item['category'] == 'Vocabulary':
+                                words = item['tags'].get('words', [])
+                                cantidad = len(words)
                                 
-                                # Grupo de botones izquierda (Abrir y Descargar)
-                                with ui.row().classes('gap-1'):
-                                    # Botón Abrir
+                                # Lógica para mostrar las primeras palabras (Ej: apple, car, book...)
+                                if cantidad > 0:
+                                    preview_text = ", ".join(words[:3]) + ("..." if cantidad > 3 else "")
+                                else:
+                                    preview_text = "Sin palabras"
+                                
+                                with ui.column().classes('w-full items-center pt-2 gap-1'):
+                                    # Texto con cantidad y ejemplos
+                                    ui.label(f'{cantidad} palabras: {preview_text}') \
+                                        .classes('text-[11px] text-slate-500 font-medium text-center line-clamp-1 w-full px-1')
+                                    
+                                    ui.button('Abrir Audios', icon='headphones', 
+                                              on_click=lambda t=item['title'], w=words: open_vocab_dialog(t, w)) \
+                                        .props('unelevated rounded size=sm color=purple no-caps w-full')
+                            else:
+                                # Botones Archivos
+                                with ui.row().classes('w-full gap-1 pt-2'):
                                     ui.button('Abrir', icon='open_in_new', 
                                               on_click=lambda x=item['file']: ui.navigate.to(f'/uploads/{x}', new_tab=True)) \
                                         .props('flat dense size=sm color=slate no-caps')
                                     
-                                    # Botón Descargar (NUEVO)
                                     ui.button(icon='cloud_download', 
                                               on_click=lambda x=item['file']: ui.download(f'/uploads/{x}')) \
-                                        .props('flat dense size=sm color=indigo round').tooltip('Descargar archivo')
+                                        .props('flat dense size=sm color=indigo round').tooltip('Descargar')
+                                    
+                            ui.space()
 
-                                # Botón Estado (Derecha)
+                            # --- BOTÓN DE ESTADO ---
+                            with ui.row().classes('w-full justify-end items-center mt-2'):
                                 check_icon = 'check_circle' if is_done else 'radio_button_unchecked'
                                 check_col = 'green' if is_done else 'grey'
                                 
