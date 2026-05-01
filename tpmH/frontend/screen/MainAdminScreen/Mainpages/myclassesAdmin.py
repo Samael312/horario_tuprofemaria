@@ -26,31 +26,41 @@ logger = logging.getLogger(__name__)
 # --- SISTEMA DE CACHÉ GLOBAL ---
 class DataCache:
     def __init__(self):
-        self.classes = None    # Almacenará la lista de clases
-        self.users = None      # Almacenará la lista de usuarios
+        self.classes = None
+        self.users = None
+        self.all_student_names = [] # Almacenará todos los nombres para el selector
+        self.current_student_filter = None # Guardará el filtro activo
         self.last_fetch = None
         self.ttl = timedelta(hours=2) # 2 Horas de vida
 
-    def get(self):
-        """Retorna (classes, users) si son válidos, sino None"""
+    def get(self, student_filter):
+        """Retorna (classes, users, student_names) si son válidos, sino None"""
         if self.classes is None or self.last_fetch is None:
             return None
         
+        # Si el filtro de estudiante cambió, invalidamos la caché
+        if self.current_student_filter != student_filter:
+            return None
+            
         if datetime.now() - self.last_fetch > self.ttl:
             logger.info("Caché expirada. Se requiere recarga DB.")
             return None
             
-        return self.classes, self.users
+        return self.classes, self.users, self.all_student_names
 
-    def set(self, classes, users):
+    def set(self, classes, users, student_names, student_filter):
         self.classes = classes
         self.users = users
+        self.all_student_names = student_names
+        self.current_student_filter = student_filter
         self.last_fetch = datetime.now()
-        logger.info(f"Datos guardados en Caché RAM ({len(classes)} registros).")
+        logger.info(f"Datos guardados en Caché RAM ({len(classes)} registros). Filtro: {student_filter}")
 
     def invalidate(self):
         self.classes = None
         self.users = None
+        self.all_student_names = []
+        self.current_student_filter = None
         logger.info("Caché invalidada manualmente.")
 
 # Instancia global (vive mientras corre la app)
@@ -167,13 +177,15 @@ def my_classesAdmin():
             ui.notify(f'Error crítico: {str(e)}', type='negative')
     
     # 1. LOGICA DE DATOS
-    def _get_all_classes_sync(admin_username):
+    def _get_all_classes_sync(admin_username, current_filters):
         """
         Versión OPTIMIZADA con Caché (Se ejecuta en un hilo separado).
         """
+        from sqlalchemy import or_, func # Importaciones necesarias para filtrar
+        
         session = PostgresSession()
         try:
-            # 1. Obtener Usuario Admin (Recibido como parámetro)
+            # 1. Obtener Usuario Admin y Zonas Horarias
             admin_user = session.query(User).filter(User.username == admin_username).first()
             admin_tz_str = admin_user.time_zone if admin_user and admin_user.time_zone else 'America/Caracas'
             try:
@@ -183,28 +195,58 @@ def my_classesAdmin():
             
             now_admin_local = datetime.now(admin_tz).replace(tzinfo=None)
             now_date_str = now_admin_local.strftime('%Y-%m-%d')
+            # Calculamos la fecha de hace un mes
+            one_month_ago_str = (now_admin_local - timedelta(days=30)).strftime('%Y-%m-%d')
+
+            student_filter = current_filters.get('student')
 
             # ======================================================
             # 2. LOGICA DE CACHÉ
             # ======================================================
-            cached_data = global_cache.get()
+            cached_data = global_cache.get(student_filter)
             
             if cached_data:
                 # HIT: Usamos datos de memoria
-                all_classes, users = cached_data
+                all_classes, users, all_student_names = cached_data
             else:
                 # MISS: Consultamos BD (Lento)
-                logger.info("⏳ Consultando Base de Datos Completa...")
-                all_classes = session.query(AsignedClasses).all()
+                logger.info("⏳ Consultando Base de Datos OPTIMIZADA...")
+                query = session.query(AsignedClasses)
+                
+                if student_filter and student_filter != 'Todos':
+                    # Si hay filtro de estudiante, traemos TODO su historial. 
+                    # Concatenamos name y surname asegurándonos de que no haya NULLs
+                    query = query.filter(
+                        func.trim(func.concat(func.coalesce(AsignedClasses.name, ''), ' ', func.coalesce(AsignedClasses.surname, ''))) == student_filter
+                    )
+                else:
+                    # Sin filtro: Traemos marcadas como Pendiente o TODO lo del último mes
+                    query = query.filter(
+                        or_(
+                            AsignedClasses.status.in_(['Pendiente', 'Prueba_Pendiente']),
+                            AsignedClasses.date >= one_month_ago_str,
+                            AsignedClasses.date_prof >= one_month_ago_str
+                        )
+                    )
+                
+                all_classes = query.all()
                 users = session.query(User).all()
+                
+                # Para que el selector de filtro nunca pierda alumnos antiguos, consultamos todos los nombres únicos rápidamente
+                all_names_query = session.query(AsignedClasses.name, AsignedClasses.surname).distinct().all()
+                all_student_names = []
+                for row in all_names_query:
+                    full_name = f"{row.name or ''} {row.surname or ''}".strip()
+                    if full_name:
+                        all_student_names.append(full_name)
                 
                 # CRÍTICO: Desconectar objetos de la sesión para que vivan en caché
                 session.expunge_all() 
                 
-                # Guardamos en caché
-                global_cache.set(all_classes, users)
+                # Guardamos en caché indicando a qué filtro pertenece
+                global_cache.set(all_classes, users, all_student_names, student_filter)
 
-            # Mapeo de zonas horarias (Procesamiento Python rápido)
+            # Mapeo de zonas horarias
             user_tz_map = {u.username: (u.time_zone or 'UTC') for u in users}
             
             today_classes = []
@@ -213,15 +255,14 @@ def my_classesAdmin():
             history_classes = []
             
             unique_regions = set()
-            unique_students = set()
+            unique_students = set(all_student_names) # <- Usamos la lista global
             
             ids_to_finalize = []
 
             for c in all_classes:
                 c.student_tz = user_tz_map.get(c.username, 'UTC')
                 unique_regions.add(c.student_tz)
-                full_name = f"{c.name} {c.surname}".strip()
-                unique_students.add(full_name)
+                # (Ya no agregamos a unique_students aquí porque lo hicimos globalmente arriba)
 
                 p_date = getattr(c, 'date_prof', None) or c.date
                 
@@ -247,6 +288,8 @@ def my_classesAdmin():
                         c_start = datetime.strptime(f"{c.date_prof} {t_str}", "%Y-%m-%d %H%M")
                         if c_start > now_admin_local: is_future = True
                 except: pass
+
+                full_name = f"{c.name} {c.surname}".strip()
 
                 if c.status in FINALIZED_STATUSES or c.status == 'Finalizada':
                     history_classes.append(c)
@@ -287,10 +330,10 @@ def my_classesAdmin():
 
     async def get_all_classes():
         """ Envoltorio asíncrono que envía la tarea a un hilo secundario """
-        # Sacamos el username en el hilo principal (NiceGUI) de forma segura
         admin_username = app.storage.user.get("username")
-        # Mandamos la ejecución a un hilo para no bloquear la interfaz web
-        return await asyncio.to_thread(_get_all_classes_sync, admin_username)
+        # Capturamos los filtros actuales para pasarlos de forma segura al Hilo
+        current_filters = {k: v for k, v in filters.items()}
+        return await asyncio.to_thread(_get_all_classes_sync, admin_username, current_filters)
     
     def filter_list(class_list):
         """Aplica los filtros activos a una lista."""
@@ -1082,8 +1125,11 @@ def my_classesAdmin():
                         render_admin_class_card(c, is_history=True)
 
     async def load_and_render():
-        # Si NO hay caché disponible, forzamos mostrar el esqueleto
-        if global_cache.get() is None:
+        # Capturamos si hay filtro para verificar la caché correctamente
+        student_filter = filters.get('student')
+        
+        # Si NO hay caché disponible para este estado, forzamos mostrar el esqueleto
+        if global_cache.get(student_filter) is None:
             state.loading = True
             render_content.refresh()
             # CRÍTICO: Esta micropausa obliga a NiceGUI a mandar el esqueleto a la pantalla YA
