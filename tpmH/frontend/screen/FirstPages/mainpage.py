@@ -108,7 +108,7 @@ def get_plans(lang):
         },
         {
             'id': 'Flexible',
-            'name': 'Flexible' if is_es else 'Flexible', 'price': '$10', 'period': '/clase' if is_es else '/class',
+            'name': 'Flexible' if is_es else 'Flexible', 'price': '$13', 'period': '/clase' if is_es else '/class',
             'features': ['Paga individual' if is_es else 'Pay individualy', 'Modalidad Online' if is_es else 'Online Mode', 'Conversacionales' if is_es else 'Conversational','Horario flexible' if is_es else 'Flexible schedule', 'Sin pagos mensuales' if is_es else 'No monthly pay'],
             'color': 'blue', 'recommended': False
         }
